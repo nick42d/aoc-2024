@@ -1,7 +1,7 @@
 fn parse_test_data(data: String) -> (Vec<usize>, Vec<usize>) {
     let mut list_1 = vec![];
     let mut list_2 = vec![];
-    for line in TEST_DATA.lines() {
+    for line in data.lines() {
         let (one, two) = line.split_once("   ").unwrap();
         list_1.push(str::parse(one).unwrap());
         list_2.push(str::parse(two).unwrap());
@@ -13,7 +13,7 @@ fn compare_lists(mut list_1: Vec<usize>, mut list_2: Vec<usize>) -> usize {
     list_2.sort();
     list_1
         .into_iter()
-        .zip(list_2.into_iter())
+        .zip(list_2)
         .fold(0, |acc, (e1, e2)| acc + e1.abs_diff(e2))
 }
 fn compare_list_similarity(mut list_1: Vec<usize>, list_2: Vec<usize>) -> usize {

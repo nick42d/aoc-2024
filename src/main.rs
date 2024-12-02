@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -15,6 +15,7 @@ mod day_2;
 fn main() {
     let cli = Cli::parse();
     let input = std::fs::read_to_string(cli.filename).unwrap();
+    let time_before = std::time::Instant::now();
     match (cli.day, cli.part) {
         (1, 1) => day_1::part_1(input),
         (1, 2) => day_1::part_2(input),
@@ -22,4 +23,10 @@ fn main() {
         (2, 2) => day_2::part_2(input),
         (day, part) => println!("Day {day} / part {part} not yet implemented"),
     }
+    let time_after = std::time::Instant::now();
+    let duration = time_after.duration_since(time_before);
+    println!(
+        "Processed day {}, part {} in {:?}",
+        cli.day, cli.part, duration
+    );
 }
