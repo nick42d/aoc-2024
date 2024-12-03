@@ -11,6 +11,7 @@ struct Cli {
 
 mod day_1;
 mod day_2;
+mod day_3;
 
 fn main() {
     let cli = Cli::parse();
@@ -21,6 +22,8 @@ fn main() {
         (1, 2) => day_1::part_2(input),
         (2, 1) => day_2::part_1(input),
         (2, 2) => day_2::part_2(input),
+        (3, 1) => day_3::part_1(input),
+        (3, 2) => day_3::part_2(input),
         (day, part) => println!("Day {day} / part {part} not yet implemented"),
     }
     let time_after = std::time::Instant::now();
