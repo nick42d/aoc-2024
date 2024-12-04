@@ -9,7 +9,7 @@ struct Box<const R: usize, const C: usize> {
 }
 
 struct BoxesIterator<const R: usize, const C: usize> {
-    grid: Text,
+    text: Text,
     next_col: usize,
     next_row: usize,
     width: usize,
@@ -22,7 +22,7 @@ impl<const R: usize, const C: usize> Iterator for BoxesIterator<R, C> {
         if self.next_row + R > self.height {
             return None;
         }
-        let box_rows = self.grid.rows[self.next_row..self.next_row + R]
+        let box_rows = self.text.rows[self.next_row..self.next_row + R]
             .iter()
             .map(|r| r[self.next_col..self.next_col + C].try_into().unwrap())
             .collect::<Vec<_>>()
@@ -47,7 +47,7 @@ impl<const R: usize, const C: usize> BoxesIterator<R, C> {
         Self {
             width: grid.rows.len(),
             height: grid.rows[0].len(),
-            grid,
+            text: grid,
             next_col: 0,
             next_row: 0,
         }
@@ -63,21 +63,23 @@ fn count_xmas(bx: Box<4, 4>) -> usize {
     let is_xmas = |arr| arr == ['X', 'M', 'A', 'S'] || arr == ['S', 'A', 'M', 'X'];
     let mut count = 0;
     if source_row == 0 {
-        for i in 0..4 {
-            if is_xmas([rows[i][0], rows[i][1], rows[i][2], rows[i][3]]) {
+        for r in rows[0..3].iter() {
+            if is_xmas([r[0], r[1], r[2], r[3]]) {
                 count += 1;
             }
         }
-    } else if is_xmas([rows[3][0], rows[3][1], rows[3][2], rows[3][3]]) {
-        count += 1;
     }
     if source_col == 0 {
-        for i in 0..4 {
+        for i in 0..3 {
             if is_xmas([rows[0][i], rows[1][i], rows[2][i], rows[3][i]]) {
                 count += 1;
             }
         }
-    } else if is_xmas([rows[0][3], rows[1][3], rows[2][3], rows[3][3]]) {
+    }
+    if is_xmas([rows[3][0], rows[3][1], rows[3][2], rows[3][3]]) {
+        count += 1;
+    }
+    if is_xmas([rows[0][3], rows[1][3], rows[2][3], rows[3][3]]) {
         count += 1;
     }
     if is_xmas([rows[0][0], rows[1][1], rows[2][2], rows[3][3]]) {
