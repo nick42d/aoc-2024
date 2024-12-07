@@ -15,6 +15,7 @@ mod day_3;
 mod day_4;
 mod day_5;
 mod day_6;
+mod day_7;
 
 fn main() {
     let cli = Cli::parse();
@@ -33,6 +34,8 @@ fn main() {
         (5, 2) => day_5::part_2(input),
         (6, 1) => day_6::part_1(input),
         (6, 2) => day_6::part_2(input),
+        (7, 1) => day_7::part_1(input),
+        (7, 2) => day_7::part_2(input),
         (day, part) => println!("Day {day} / part {part} not yet implemented"),
     }
     let time_after = std::time::Instant::now();
