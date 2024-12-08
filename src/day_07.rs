@@ -73,7 +73,7 @@ pub(crate) fn part_2(input: String) {
 
 #[cfg(test)]
 mod tests {
-    use crate::day_7::{parse, test_equation, test_equation_with_concaternation};
+    use crate::day_07::{parse, test_equation, test_equation_with_concaternation};
 
     const TEST_DATA: &str = "190: 10 19
 3267: 81 40 27

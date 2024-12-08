@@ -279,7 +279,7 @@ pub(crate) fn part_2(input: String) {
 
 #[cfg(test)]
 mod tests {
-    use crate::day_6::{count_locations, count_obstacles_that_cause_loops};
+    use crate::day_06::{count_locations, count_obstacles_that_cause_loops};
 
     #[test]
     fn test_count_locations() {
