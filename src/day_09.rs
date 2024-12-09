@@ -100,14 +100,13 @@ fn parse_movable_encodings(s: &str) -> VecDeque<MovableEncoding> {
 }
 
 fn defrag(encodings: &mut VecDeque<MovableEncoding>) {
-    for back_idx in (0..encodings.len()).rev() {
+    let mut back_idx = encodings.len();
+    while back_idx != 0 {
+        back_idx -= 1;
         if !encodings[back_idx].now_fixed {
             encodings[back_idx].now_fixed = true;
             let trying_to_move_files = encodings[back_idx].files;
-            for fwd_idx in 0..encodings.len() {
-                if fwd_idx == back_idx {
-                    break;
-                }
+            for fwd_idx in 0..back_idx {
                 if let Some(space) = encodings[fwd_idx]
                     .free_space
                     .checked_sub(trying_to_move_files)
@@ -116,13 +115,29 @@ fn defrag(encodings: &mut VecDeque<MovableEncoding>) {
                     encodings[fwd_idx].free_space = 0;
                     encodings[back_idx].free_space = space;
                     if let Some(next_back_idx) = back_idx.checked_sub(1) {
+                        debug_assert_ne!(next_back_idx, fwd_idx);
                         encodings[next_back_idx].free_space += new_gap
                     }
                     let back = encodings.remove(back_idx).unwrap();
                     encodings.insert(fwd_idx + 1, back);
+                    // Neat hack to say, need to try this back_idx a second time if we've done a
+                    // swap, since it will contain a new value.
+                    back_idx += 1;
                     break;
                 }
             }
+        }
+    }
+    debug_assert!(back_idx <= 1)
+}
+
+fn print_encodings(encodings: &VecDeque<MovableEncoding>) {
+    for encoding in encodings {
+        for file in 0..encoding.files {
+            print!("|{}", encoding.idx);
+        }
+        for space in 0..encoding.free_space {
+            print!(".");
         }
     }
 }
