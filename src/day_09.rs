@@ -64,6 +64,7 @@ fn parse_encodings(s: &str) -> VecDeque<Encoding> {
         .zip(
             trimmed
                 .chars()
+                // Hack to deal with last encoding not containing free_space.
                 .chain(std::iter::once('0'))
                 .skip(1)
                 .step_by(2),
@@ -114,12 +115,10 @@ fn defrag(encodings: &mut VecDeque<MovableEncoding>) {
                     let new_gap = encodings[back_idx].free_space + encodings[back_idx].files;
                     encodings[fwd_idx].free_space = 0;
                     encodings[back_idx].free_space = space;
-                    if let Some(next_back_idx) = back_idx.checked_sub(1) {
-                        debug_assert_ne!(next_back_idx, fwd_idx);
-                        encodings[next_back_idx].free_space += new_gap
-                    }
                     let back = encodings.remove(back_idx).unwrap();
                     encodings.insert(fwd_idx + 1, back);
+                    // After moving the encoding, create a hole where the encoding used to be.
+                    encodings[back_idx].free_space += new_gap;
                     // Neat hack to say, need to try this back_idx a second time if we've done a
                     // swap, since it will contain a new value.
                     back_idx += 1;
