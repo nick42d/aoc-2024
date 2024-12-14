@@ -116,7 +116,7 @@ fn get_all_antinodes_in_bounds(
 }
 
 // https://en.wikipedia.org/wiki/Greatest_common_divisor#Binary_GCD_algorithm
-fn gcd(mut a: usize, mut b: usize) -> usize {
+pub fn gcd(mut a: usize, mut b: usize) -> usize {
     let mut d = 0;
     while (a % 2) == 0 && (b % 2) == 0 {
         a /= 2;
