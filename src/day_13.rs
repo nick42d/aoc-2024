@@ -1,16 +1,16 @@
 use std::cmp::Ordering;
 
-const A_COST: usize = 3;
-const B_COST: usize = 1;
+const A_COST: isize = 3;
+const B_COST: isize = 1;
 
 #[derive(Debug)]
 struct ClawMachine {
-    a_x: usize,
-    a_y: usize,
-    b_x: usize,
-    b_y: usize,
-    prize_x: usize,
-    prize_y: usize,
+    a_x: isize,
+    a_y: isize,
+    b_x: isize,
+    b_y: isize,
+    prize_x: isize,
+    prize_y: isize,
 }
 
 fn parse_input(s: &str) -> Vec<ClawMachine> {
@@ -42,99 +42,33 @@ fn parse_input(s: &str) -> Vec<ClawMachine> {
 enum CheckOutcome {
     TooMuchB,
     NotEnoughB,
-    WinWithA(usize),
+    WinWithA(isize),
     NotWinnable,
 }
 
-// Returns if we can win with the current n_b, or if more or less n_b are
-// required. If indivisible, return None.
-fn check_win(c: &ClawMachine, n_b: usize) -> CheckOutcome {
-    println!("c: {:?}", c);
-    let b_x = c.b_x * n_b;
-    let b_y = c.b_y * n_b;
-    let Some(x_rem) = c.prize_x.checked_sub(b_x) else {
-        return CheckOutcome::TooMuchB;
+/// This is the value of n_a and n_b where claw machine wins. Returns (value,
+/// remainder)
+fn solve(c: &ClawMachine) -> Option<(isize, isize)> {
+    let n_b = (c.a_x * c.prize_y - c.a_y * c.prize_x) / (c.b_y * c.a_x - c.b_x * c.a_y);
+    let rem_b = (c.a_x * c.prize_y - c.a_y * c.prize_x) % (c.b_y * c.a_x - c.b_x * c.a_y);
+    let n_a = (c.prize_x - n_b * c.b_x) / c.a_x;
+    let rem_a = (c.prize_x - n_b * c.b_x) % c.a_x;
+    if rem_b != 0 || rem_a != 0 {
+        return None;
     };
-    let Some(y_rem) = c.prize_y.checked_sub(b_y) else {
-        return CheckOutcome::TooMuchB;
-    };
-
-    let n_a_x = x_rem / c.a_x;
-    let n_a_y = y_rem / c.a_y;
-    let n_a_x_rem = x_rem % c.a_x;
-    let n_a_y_rem = y_rem % c.a_y;
-
-    if n_a_x == n_a_y {
-        if n_a_y_rem == 0 && n_a_x_rem == 0 {
-            return CheckOutcome::WinWithA(n_a_x);
-        }
-        return CheckOutcome::NotWinnable;
-    }
-    CheckOutcome::NotEnoughB
+    Some((n_a, n_b))
 }
 
-/// If b is pressed n_b times, returns number of times a pressed if it will be a
-/// win.
-fn n_a_to_win(c: &ClawMachine, n_b: usize) -> Option<usize> {
-    let b_x = c.b_x * n_b;
-    let b_y = c.b_y * n_b;
-    let x_rem = c.prize_x.checked_sub(b_x)?;
-    let y_rem = c.prize_y.checked_sub(b_y)?;
-
-    if x_rem / c.a_x == y_rem / c.a_y && x_rem % c.a_x == 0 && y_rem % c.a_y == 0 {
-        return Some(x_rem / c.a_x);
-    }
-    None
-}
-
-/// If a is pressed n_a times, returns number of times b pressed if it will be a
-/// win.
-fn n_b_to_win(c: &ClawMachine, n_a: usize) -> Option<usize> {
-    let a_x = c.a_x * n_a;
-    let a_y = c.a_y * n_a;
-    let x_rem = c.prize_x.checked_sub(a_x)?;
-    let y_rem = c.prize_y.checked_sub(a_y)?;
-
-    if x_rem / c.b_x == y_rem / c.b_y && x_rem % c.b_x == 0 && y_rem % c.b_y == 0 {
-        return Some(x_rem / c.b_x);
-    }
-    None
-}
-
-/// (a, b)
-fn cheapest_win(c: &ClawMachine) -> Option<(usize, usize)> {
-    let mut cur = 0;
-    let mut max_bounds = c.prize_x.max(c.prize_y);
-    let mut min_bounds = 0;
-    loop {
-        println!("mx {max_bounds} mn {min_bounds} cur {cur}");
-        let check = check_win(c, cur);
-        println!("Check: {:?}", check);
-        match check {
-            CheckOutcome::NotEnoughB => {
-                min_bounds = cur;
-                cur = (max_bounds + cur) / 2;
-            }
-            CheckOutcome::TooMuchB => {
-                max_bounds = cur;
-                cur = (min_bounds + cur) / 2;
-            }
-            CheckOutcome::WinWithA(n) => return Some((n, cur)),
-            CheckOutcome::NotWinnable => return None,
-        }
-    }
-}
-
-fn solve_part_1(s: &str) -> usize {
+fn solve_part_1(s: &str) -> isize {
     let c = parse_input(s);
     c.into_iter()
-        .filter_map(|c| cheapest_win(&c))
+        .filter_map(|c| solve(&c))
         .map(|(a, b)| a * A_COST + b * B_COST)
         .reduce(|acc, e| acc + e)
         .unwrap()
 }
 
-fn solve_part_2(s: &str) -> usize {
+fn solve_part_2(s: &str) -> isize {
     let c = parse_input(s);
     c.into_iter()
         .map(|mut c| {
@@ -142,12 +76,7 @@ fn solve_part_2(s: &str) -> usize {
             c.prize_y += 10000000000000;
             c
         })
-        .enumerate()
-        .map(|(idx, e)| {
-            println!("checking machine {idx}");
-            e
-        })
-        .filter_map(|c| cheapest_win(&c))
+        .filter_map(|c| solve(&c))
         .map(|(a, b)| a * A_COST + b * B_COST)
         .reduce(|acc, e| acc + e)
         .unwrap()
@@ -161,15 +90,15 @@ pub(crate) fn part_1(input: String) {
 }
 
 pub(crate) fn part_2(input: String) {
-    // println!(
-    //     "Minimum tokens to win all possible prizes is {}",
-    //     solve_part_2(&input)
-    // );
+    println!(
+        "Minimum tokens to win all possible prizes is {}",
+        solve_part_2(&input)
+    );
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::day_13::{cheapest_win, parse_input, solve_part_1, ClawMachine};
+    use crate::day_13::{parse_input, solve, solve_part_1, ClawMachine};
 
     const TEST_DATA: &str = "Button A: X+94, Y+34
 Button B: X+22, Y+67
@@ -194,28 +123,28 @@ Prize: X=18641, Y=10279";
     fn test_part_1_machine_1() {
         let c = parse_input(TEST_DATA);
         let c = &c[0];
-        let (a, b) = cheapest_win(c).unwrap();
+        let (a, b) = solve(c).unwrap();
         assert_eq!((a, b), (80, 40));
     }
     #[test]
     fn test_part_1_machine_2() {
         let c = parse_input(TEST_DATA);
         let c = &c[1];
-        let w = cheapest_win(c);
+        let w = solve(c);
         assert_eq!(w, None);
     }
     #[test]
     fn test_part_1_machine_3() {
         let c = parse_input(TEST_DATA);
         let c = &c[2];
-        let w = cheapest_win(c);
+        let w = solve(c);
         assert_eq!(w, Some((38, 86)));
     }
     #[test]
     fn test_part_1_machine_4() {
         let c = parse_input(TEST_DATA);
         let c = &c[3];
-        let w = cheapest_win(c);
+        let w = solve(c);
         assert_eq!(w, None);
     }
 }
