@@ -114,12 +114,12 @@ impl Computer {
     }
     fn inv_bdv(mut self) -> Self {
         self.ptr -= 2;
-        self.b *= 2usize.pow(self.combo_operand() as u32);
+        self.b = self.a * 2usize.pow(self.combo_operand() as u32);
         self
     }
     fn inv_cdv(mut self) -> Self {
         self.ptr -= 2;
-        self.c *= 2usize.pow(self.combo_operand() as u32);
+        self.c = self.a * 2usize.pow(self.combo_operand() as u32);
         self
     }
     fn inv_bxl(mut self) -> Self {

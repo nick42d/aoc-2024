@@ -41,33 +41,33 @@ fn check_neighbours(
     score: usize,
     pos: Point,
     dir: Direction,
+    mut points: HashSet<Point>,
     grid: &Grid<Tile>,
-    history: &mut HashMap<Point, (HashMap<Direction, usize>)>,
-) -> Vec<(usize, Point, Direction)> {
-    if pos == Point::new(15, 7) {
-        println!("15,7, score {score}");
-    }
-    if pos == Point::new(5, 7) {
-        println!("5,7, score {score}");
-    }
+    history: &mut HashMap<Point, (HashMap<Direction, (usize, HashSet<Point>)>)>,
+) -> Vec<(usize, Point, Direction, HashSet<Point>)> {
+    points.insert(pos);
     match history.entry(pos) {
         Entry::Occupied(mut e) => {
             let prev_visits = e.get_mut();
             match prev_visits.entry(dir) {
                 Entry::Occupied(mut e) => {
-                    let prev_score = e.get_mut();
-                    if *prev_score <= score {
+                    let (prev_score, prev_dirs) = e.get_mut();
+                    if *prev_score < score {
+                        return vec![];
+                    }
+                    if *prev_score == score {
+                        prev_dirs.extend(points);
                         return vec![];
                     }
                     *prev_score = score;
                 }
                 Entry::Vacant(vacant_entry) => {
-                    vacant_entry.insert(score);
+                    vacant_entry.insert((score, points.clone()));
                 }
             }
         }
         Entry::Vacant(vacant_entry) => {
-            vacant_entry.insert([(dir, score)].into());
+            vacant_entry.insert([(dir, (score, points.clone()))].into());
         }
     };
     let free_neighbours = [
@@ -80,7 +80,12 @@ fn check_neighbours(
     let mut out = vec![];
     for (next_pos, next_score, next_dir) in free_neighbours {
         out.extend(check_neighbours(
-            next_score, next_pos, next_dir, grid, history,
+            next_score,
+            next_pos,
+            next_dir,
+            points.clone(),
+            grid,
+            history,
         ));
     }
     out
@@ -91,81 +96,102 @@ fn solve_part_1(s: &str) -> usize {
     let start_loc = grid.find_unchecked(Tile::Start);
     let end_loc = grid.find_unchecked(Tile::End);
     let mut history = HashMap::new();
-    check_neighbours(0, start_loc, Direction::Right, &grid, &mut history);
+    check_neighbours(
+        0,
+        start_loc,
+        Direction::Right,
+        HashSet::new(),
+        &grid,
+        &mut history,
+    );
     *history
         .get(&end_loc)
         .unwrap()
-        .iter()
-        .map(|(_, s)| s)
+        .values()
+        .map(|(s, _)| s)
         .min_by(|a, b| a.cmp(b))
         .unwrap()
 }
 
-fn walk_history_dfs(
-    mut cur: Point,
-    end: Point,
-    history: &HashMap<Point, HashMap<Direction, usize>>,
-) -> HashSet<Point> {
-    let mut points = HashSet::new();
-    let mut history_visited = history
-        .iter()
-        .map(|(k, v)| {
-            (
-                *k,
-                v.keys()
-                    .map(|v| (*v, false))
-                    .collect::<HashMap<Direction, bool>>(),
-            )
-        })
-        .collect::<HashMap<Point, HashMap<Direction, bool>>>();
-    let mut backtrack_stack = vec![];
-    loop {
-        // Don't exceed cur
-        if cur == end {
-            if let Some(backtrack) = backtrack_stack.pop() {
-                cur = backtrack
-            } else {
-                break;
-            }
-        }
-        let mut possible_visits: Vec<_> = history_visited
-            .get_mut(&cur)
-            .unwrap()
-            .iter_mut()
-            .filter(|(_, b)| !**b)
-            .collect();
-        // If there are more than 1 possible visit, add a backtrack to the stack.
-        if possible_visits.len() > 1 {
-            backtrack_stack.push(cur);
-        }
-        // If there are no more possible visits, go to the next backtrack or end.
-        if possible_visits.is_empty() {
-            if let Some(backtrack) = backtrack_stack.pop() {
-                cur = backtrack;
-                continue;
-            } else {
-                break;
-            }
-        }
-        *possible_visits[0].1 = true;
-        cur = cur.move_direction(possible_visits[0].0.rev());
-        points.insert(cur);
-    }
-    points
-}
+// fn walk_history_dfs(
+//     mut cur: Point,
+//     end: Point,
+//     history: &HashMap<Point, HashMap<Direction, (usize, HashSet<Point>)>>,
+// ) -> HashSet<Point> {
+//     let mut points = HashSet::new();
+//     let mut history_visited = history
+//         .iter()
+//         .map(|(k, v)| {
+//             (
+//                 *k,
+//                 v.keys()
+//                     .map(|v| (*v, false))
+//                     .collect::<HashMap<Direction, bool>>(),
+//             )
+//         })
+//         .collect::<HashMap<Point, HashMap<Direction, bool>>>();
+//     let mut backtrack_stack = vec![];
+//     loop {
+//         // Don't exceed cur
+//         if cur == end {
+//             if let Some(backtrack) = backtrack_stack.pop() {
+//                 cur = backtrack
+//             } else {
+//                 break;
+//             }
+//         }
+//         let mut possible_visits: Vec<_> = history_visited
+//             .get_mut(&cur)
+//             .unwrap()
+//             .iter_mut()
+//             .filter(|(_, b)| !**b)
+//             .collect();
+//         // If there are more than 1 possible visit, add a backtrack to the
+// stack.         if possible_visits.len() > 1 {
+//             backtrack_stack.push(cur);
+//         }
+//         // If there are no more possible visits, go to the next backtrack or
+// end.         if possible_visits.is_empty() {
+//             if let Some(backtrack) = backtrack_stack.pop() {
+//                 cur = backtrack;
+//                 continue;
+//             } else {
+//                 break;
+//             }
+//         }
+//         *possible_visits[0].1 = true;
+//         cur = cur.move_direction(possible_visits[0].0.rev());
+//         points.insert(cur);
+//     }
+//     points
+// }
 
 fn solve_part_2(s: &str) -> usize {
     let grid = parse_input(s);
     let start_loc = grid.find_unchecked(Tile::Start);
     let end_loc = grid.find_unchecked(Tile::End);
     let mut history = HashMap::new();
-    check_neighbours(0, start_loc, Direction::Right, &grid, &mut history);
-    let mut track = walk_history_dfs(end_loc, start_loc, &history);
-    print_data_end_track(&grid, &track);
-    track.len()
+    check_neighbours(
+        0,
+        start_loc,
+        Direction::Right,
+        HashSet::new(),
+        &grid,
+        &mut history,
+    );
+    history
+        .get(&end_loc)
+        .unwrap()
+        .values()
+        .flat_map(|(_, p)| p.iter())
+        .collect::<HashSet<_>>()
+        .len()
+    // let mut track = walk_history_dfs(end_loc, start_loc, &history);
+    // print_data_and_track(&grid, &track);
+    // track.len()
 }
 
-fn print_data_end_track(m: &Grid<Tile>, h: &HashSet<Point>) {
+fn print_data_and_track(m: &Grid<Tile>, h: &HashSet<Point>) {
     for (y, r) in m.repr.iter().enumerate() {
         for (x, c) in r.iter().enumerate() {
             if h.contains(&Point::new(x, y)) {
