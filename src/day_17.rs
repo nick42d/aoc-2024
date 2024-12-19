@@ -1,4 +1,7 @@
-use std::sync::mpsc;
+use std::{
+    ops::Deref,
+    sync::{mpsc, Arc, Mutex},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Computer {
@@ -10,146 +13,171 @@ struct Computer {
     ins: Vec<usize>,
 }
 
-enum OneOrIter<T, I>
-where
-    I: Iterator<Item = T>,
-{
+type ArcIter<T> = Arc<Mutex<dyn Iterator<Item = T>>>;
+
+enum OneOrIter<T> {
     One(T),
-    Iter(I),
+    Iter(ArcIter<T>),
 }
 
-struct ReversibleComputer<AI, BI, CI>
-where
-    AI: Iterator<Item = usize>,
-    BI: Iterator<Item = usize>,
-    CI: Iterator<Item = usize>,
-{
-    a: OneOrIter<usize, AI>,
-    b: OneOrIter<usize, BI>,
-    c: OneOrIter<usize, CI>,
+impl<T> OneOrIter<T> {
+    fn map<U, F>(self, mut f: F) -> OneOrIter<U>
+    where
+        F: FnMut(T) -> U + 'static,
+        T: 'static,
+    {
+        match self {
+            OneOrIter::One(x) => OneOrIter::One(f(x)),
+            OneOrIter::Iter(i) => OneOrIter::Iter(Arc::new(*i.map(f)) as ArcIter<U>),
+        }
+    }
+    fn clone(&self) -> OneOrIter<T>
+    where
+        T: Copy,
+    {
+        match self {
+            OneOrIter::One(x) => OneOrIter::One(*x),
+            OneOrIter::Iter(i) => OneOrIter::Iter(i.clone()),
+        }
+    }
+}
+
+struct ReversibleComputer<'a> {
+    a: OneOrIter<'a, usize>,
+    b: OneOrIter<'a, usize>,
+    c: OneOrIter<'a, usize>,
     jnzfrm: Option<usize>,
     ptr: usize,
     out: Vec<usize>,
     ins: Vec<usize>,
 }
 
-// impl<AI, BI, CI> ReversibleComputer<AI, BI, CI>
-// where
-//     AI: Iterator<Item = usize>,
-//     BI: Iterator<Item = usize>,
-//     CI: Iterator<Item = usize>,
-// {
-//     fn literal_operand(&self) -> usize {
-//         self.ins[self.ptr + 1]
-//     }
-//     fn combo_operand(&self) -> usize {
-//         let combo = self.ins[self.ptr + 1];
-//         match combo {
-//             0..=3 => combo,
-//             4 => self.a,
-//             5 => self.b,
-//             6 => self.c,
-//             7 => unreachable!(),
-//             _ => panic!(),
-//         }
-//     }
-//     fn cur(&self) -> Option<usize> {
-//         self.ins.get(self.ptr).copied()
-//     }
-//     fn adv(mut self) -> Self {
-//         self.a /= 2usize.pow(self.combo_operand() as u32);
-//         self.ptr += 2;
-//         self
-//     }
-//     fn bxl(mut self) -> Self {
-//         self.b ^= self.literal_operand();
-//         self.ptr += 2;
-//         self
-//     }
-//     fn bst(mut self) -> Self {
-//         self.b = self.combo_operand() % 8;
-//         self.ptr += 2;
-//         self
-//     }
-//     fn jnz(mut self) -> Self {
-//         if self.a != 0 {
-//             self.ptr = self.literal_operand();
-//             return self;
-//         }
-//         self.ptr += 2;
-//         self
-//     }
-//     fn bxc(mut self) -> Self {
-//         self.b ^= self.c;
-//         self.ptr += 2;
-//         self
-//     }
-//     fn out(mut self) -> Self {
-//         self.out.push(self.combo_operand() % 8);
-//         self.ptr += 2;
-//         self
-//     }
-//     fn bdv(mut self) -> Self {
-//         self.b = self.a / 2usize.pow(self.combo_operand() as u32);
-//         self.ptr += 2;
-//         self
-//     }
-//     fn cdv(mut self) -> Self {
-//         self.c = self.a / 2usize.pow(self.combo_operand() as u32);
-//         self.ptr += 2;
-//         self
-//     }
-//     fn inv_adv(mut self) -> Self {
-//         self.ptr -= 2;
-//         self.a *= 2usize.pow(self.combo_operand() as u32);
-//         self
-//     }
-//     fn inv_bdv(mut self) -> Self {
-//         self.ptr -= 2;
-//         self.b = self.a * 2usize.pow(self.combo_operand() as u32);
-//         self
-//     }
-//     fn inv_cdv(mut self) -> Self {
-//         self.ptr -= 2;
-//         self.c = self.a * 2usize.pow(self.combo_operand() as u32);
-//         self
-//     }
-//     fn inv_bxl(mut self) -> Self {
-//         self.ptr -= 2;
-//         self.b ^= self.literal_operand();
-//         self
-//     }
-//     fn inv_bst(mut self) -> impl Iterator<Item = Self> {
-//         self.ptr -= 2;
-//         self.b = self.combo_operand() % 8;
-//         (0..=usize::MAX).skip(self.b).step_by(8).map(move |i| {
-//             let mut out = self.clone();
-//             // Set depends on combo operand.
-//             out.b = i;
-//             out
-//         })
-//     }
-//     fn inv_jnz(mut self) -> Self {
-//         // NOTE: Jump case not visible here - we don't know where we jumped
-// from!         self.ptr -= 2;
-//         self
-//     }
-//     fn inv_bxc(mut self) -> Self {
-//         self.ptr -= 2;
-//         self.b ^= self.c;
-//         self
-//     }
-//     fn inv_out(mut self) -> impl Iterator<Item = Self> {
-//         self.ptr -= 2;
-//         let prev = self.out.pop().unwrap();
-//         (0..=usize::MAX).skip(prev).step_by(8).map(move |i| {
-//             todo!();
-//             let mut out = self.clone();
-//             out.b = i;
-//             out
-//         })
-//     }
-// }
+impl<'a> ReversibleComputer<'a> {
+    fn literal_operand(&self) -> usize {
+        self.ins[self.ptr + 1]
+    }
+    fn literal_operand_back(&self) -> usize {
+        self.ins[self.ptr - 1]
+    }
+    fn combo_operand(&self) -> OneOrIter<usize> {
+        let combo = self.ins[self.ptr + 1];
+        match combo {
+            0..=3 => OneOrIter::One(combo),
+            4 => self.a.borrow(),
+            5 => self.b.borrow(),
+            6 => self.c.borrow(),
+            7 => unreachable!(),
+            _ => panic!(),
+        }
+    }
+    fn cur(&self) -> Option<usize> {
+        self.ins.get(self.ptr).copied()
+    }
+    fn cur_back(&self) -> Option<usize> {
+        self.ins.get(self.ptr - 2).copied()
+    }
+    fn inc_ptr(mut self) -> Self {
+        self.ptr += 2;
+        self
+    }
+    fn inv_inc_ptr(mut self) -> Self {
+        self.ptr -= 2;
+        self
+    }
+    //     fn adv(mut self) -> Self {
+    //         self.a /= 2usize.pow(self.combo_operand() as u32);
+    //         self.ptr += 2;
+    //         self
+    //     }
+    //     fn bxl(mut self) -> Self {
+    //         self.b ^= self.literal_operand();
+    //         self.ptr += 2;
+    //         self
+    //     }
+    //     fn bst(mut self) -> Self {
+    //         self.b = self.combo_operand() % 8;
+    //         self.ptr += 2;
+    //         self
+    //     }
+    //     fn jnz(mut self) -> Self {
+    //         if self.a != 0 {
+    //             self.ptr = self.literal_operand();
+    //             return self;
+    //         }
+    //         self.ptr += 2;
+    //         self
+    //     }
+    //     fn bxc(mut self) -> Self {
+    //         self.b ^= self.c;
+    //         self.ptr += 2;
+    //         self
+    //     }
+    //     fn out(mut self) -> Self {
+    //         self.out.push(self.combo_operand() % 8);
+    //         self.ptr += 2;
+    //         self
+    //     }
+    //     fn bdv(mut self) -> Self {
+    //         self.b = self.a / 2usize.pow(self.combo_operand() as u32);
+    //         self.ptr += 2;
+    //         self
+    //     }
+    //     fn cdv(mut self) -> Self {
+    //         self.c = self.a / 2usize.pow(self.combo_operand() as u32);
+    //         self.ptr += 2;
+    //         self
+    //     }
+    //     fn inv_adv(mut self) -> Self {
+    //         self.ptr -= 2;
+    //         self.a *= 2usize.pow(self.combo_operand() as u32);
+    //         self
+    //     }
+    //     fn inv_bdv(mut self) -> Self {
+    //         self.ptr -= 2;
+    //         self.b = self.a * 2usize.pow(self.combo_operand() as u32);
+    //         self
+    //     }
+    //     fn inv_cdv(mut self) -> Self {
+    //         self.ptr -= 2;
+    //         self.c = self.a * 2usize.pow(self.combo_operand() as u32);
+    //         self
+    //     }
+    //     fn inv_bxl(mut self) -> Self {
+    //         self.ptr -= 2;
+    //         self.b ^= self.literal_operand();
+    //         self
+    //     }
+    //     fn inv_bst(mut self) -> impl Iterator<Item = Self> {
+    //         self.ptr -= 2;
+    //         self.b = self.combo_operand() % 8;
+    //         (0..=usize::MAX).skip(self.b).step_by(8).map(move |i| {
+    //             let mut out = self.clone();
+    //             // Set depends on combo operand.
+    //             out.b = i;
+    //             out
+    //         })
+    //     }
+    //     fn inv_jnz(mut self) -> Self {
+    //         // NOTE: Jump case not visible here - we don't know where we jumped
+    // from!         self.ptr -= 2;
+    //         self
+    //     }
+    //     fn inv_bxc(mut self) -> Self {
+    //         self.ptr -= 2;
+    //         self.b ^= self.c;
+    //         self
+    //     }
+    //     fn inv_out(mut self) -> impl Iterator<Item = Self> {
+    //         self.ptr -= 2;
+    //         let prev = self.out.pop().unwrap();
+    //         (0..=usize::MAX).skip(prev).step_by(8).map(move |i| {
+    //             todo!();
+    //             let mut out = self.clone();
+    //             out.b = i;
+    //             out
+    //         })
+    //     }
+}
 
 impl Computer {
     fn from_str(s: &str) -> Computer {
