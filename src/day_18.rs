@@ -49,8 +49,8 @@ fn add_byte_to_grid(byte_loc: Point, mut grid: Grid<Byte>) -> Grid<Byte> {
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 struct DijkstraNode {
-    dist: usize,
     p: Point,
+    dist: usize,
 }
 
 fn dijkstra(start: Point, target: Point, g: &Grid<Byte>) -> HashMap<Point, usize> {

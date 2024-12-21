@@ -4,8 +4,8 @@ use std::{
     fmt::Display,
 };
 
-#[derive(PartialEq)]
-enum Tile {
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub enum Tile {
     Wall,
     Start,
     End,
@@ -23,7 +23,7 @@ impl Display for Tile {
     }
 }
 
-fn char_to_tile(c: char) -> Tile {
+pub fn char_to_tile(c: char) -> Tile {
     match c {
         '#' => Tile::Wall,
         'S' => Tile::Start,
