@@ -20,6 +20,14 @@ pub enum Direction {
 }
 
 impl Direction {
+    pub fn array_plus() -> [Self; 4] {
+        [
+            Direction::Up,
+            Direction::Down,
+            Direction::Left,
+            Direction::Right,
+        ]
+    }
     pub fn rev(&self) -> Self {
         match self {
             Direction::Up => Direction::Down,
@@ -209,4 +217,91 @@ where
         let repr = iter.into_iter().map(|i| i.into_iter().collect()).collect();
         Self { repr }
     }
+}
+
+/// Returns list of all visited locations and the moves taken.
+fn generic_bfs<T, I, M>(
+    init: T,
+    goal_check: impl Fn(&T) -> bool,
+    // Don't bother gettting neighbours if we are here, already in invalid state.
+    state_shortcircuit: impl Fn(&T) -> bool,
+    get_neighbours: impl Fn(T) -> I,
+) -> HashMap<T, Vec<M>>
+where
+    T: Eq + Hash + Clone + Debug,
+    M: Clone,
+    I: IntoIterator<Item = (T, M)>,
+{
+    let mut queue = VecDeque::new();
+    let mut explored = HashMap::new();
+    explored.insert(init.clone(), vec![]);
+    queue.push_front((init, vec![]));
+    while let Some((next_to_visit, mut history)) = queue.pop_back() {
+        if goal_check(&next_to_visit) {
+            break;
+        }
+        for (neighbour, m) in get_neighbours(next_to_visit) {
+            if !explored.contains_key(&neighbour) && !state_shortcircuit(&neighbour) {
+                let mut new_history = history.clone();
+                new_history.push(m);
+                explored.insert(neighbour.clone(), new_history.clone());
+                queue.push_front((neighbour, new_history));
+            }
+        }
+    }
+    explored
+}
+
+struct DijkstraNode<T, F> {
+    inner: T,
+    ordering_func: F,
+}
+impl<T, F> PartialEq for DijkstraNode<T, F> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+impl<T, F, O> PartialOrd for DijkstraNode<T, F>
+where
+    F: Fn(&T) -> O,
+    O: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.ordering_func(self.inner)
+            .partial_cmp(other.ordering_func(other.inner))
+    }
+}
+
+/// Returns list of all visited locations and the moves taken.
+fn generic_dijkstra<T, I, M, R>(
+    init: T,
+    // Function will short circuit if goal is reached.
+    goal_check: impl Fn(&T) -> bool,
+    // Don't bother gettting neighbours if we are here, already in invalid state.
+    state_shortcircuit: impl Fn(&T) -> bool,
+    get_neighbours: impl Fn(T) -> I,
+) -> HashMap<T, Vec<M>>
+where
+    T: Eq + Hash + Clone + Debug,
+    M: Clone,
+    I: IntoIterator<Item = (T, M)>,
+{
+    let mut queue = BinaryHeap::new();
+    let mut explored = HashMap::new();
+    explored.insert(init.clone(), vec![]);
+    queue.push_front((init, vec![]));
+    while let Some((next_to_visit, mut history)) = queue.pop_back() {
+        if goal_check(&next_to_visit) {
+            break;
+        }
+        for (neighbour, m) in get_neighbours(next_to_visit) {
+            if !explored.contains_key(&neighbour) && !state_shortcircuit(&neighbour) {
+                let mut new_history = history.clone();
+                new_history.push(m);
+                explored.insert(neighbour.clone(), new_history.clone());
+                queue.push_front((neighbour, new_history));
+            }
+        }
+    }
+    explored
 }
