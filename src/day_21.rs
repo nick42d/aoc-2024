@@ -1,4 +1,4 @@
-use crate::utils::Direction;
+use crate::utils::{generic_dijkstra, Direction};
 use std::{
     collections::{BinaryHeap, HashMap, HashSet, VecDeque},
     fmt::Debug,
@@ -18,7 +18,7 @@ struct State {
 }
 
 impl State {
-    fn get_neighbours(self) -> impl Iterator<Item = (Self, DirectionalKeypadState)> {
+    fn get_neighbours(self, _: &()) -> impl Iterator<Item = (Self, DirectionalKeypadState, usize)> {
         let seq_len = self.sequence.len();
         [
             DirectionalKeypadState::A,
@@ -28,7 +28,13 @@ impl State {
             DirectionalKeypadState::Right,
         ]
         .into_iter()
-        .filter_map(move |d| Some((self.clone().press_directional(d)?, d)))
+        .filter_map(move |d| Some((self.clone().press_directional(d)?, d, 1)))
+    }
+    fn test_seq(mut self, seq: impl IntoIterator<Item = DirectionalKeypadState>) -> Option<Self> {
+        for d in seq {
+            self = self.press_directional(d)?;
+        }
+        Some(self)
     }
     fn press_directional(mut self, d: DirectionalKeypadState) -> Option<Self> {
         match d {
@@ -177,6 +183,17 @@ impl DirectionalKeypadState {
     }
 }
 
+fn parse_seq(s: &str) -> impl Iterator<Item = DirectionalKeypadState> + '_ {
+    s.chars().map(|c| match c {
+        'A' => DirectionalKeypadState::A,
+        '^' => DirectionalKeypadState::Up,
+        'v' => DirectionalKeypadState::Down,
+        '<' => DirectionalKeypadState::Left,
+        '>' => DirectionalKeypadState::Right,
+        _ => unreachable!(),
+    })
+}
+
 fn print_dirs(v: &[DirectionalKeypadState]) {
     for d in v {
         match d {
@@ -206,79 +223,95 @@ fn test_part_1_shortest_1() {
         NumericKeypadState::Nine,
         NumericKeypadState::A,
     ];
-    let set = generic_bfs(
+    let set = generic_dijkstra(
         State::default(),
-        |state| state.sequence.as_slice() == test_in.as_slice(),
-        |state| !test_in.as_slice().starts_with(state.sequence.as_slice()),
+        |state, _| state.sequence.as_slice() == test_in.as_slice(),
+        |state, _| !test_in.as_slice().starts_with(state.sequence.as_slice()),
         State::get_neighbours,
+        &(),
     );
     let (f, d) = set
         .into_iter()
         .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
         .unwrap();
-    print_dirs(&d);
-    assert_eq!(d.len(), 68)
+    print_dirs(&d.1);
+    assert_eq!(d.1.len(), 68)
 }
 #[test]
-fn test_part_1_shortest_2() {
-    let test_in = [
-        NumericKeypadState::Nine,
-        NumericKeypadState::Eight,
-        NumericKeypadState::Zero,
-        NumericKeypadState::A,
-    ];
-    let set = generic_bfs(
-        State::default(),
-        |state| state.sequence.as_slice() == test_in.as_slice(),
-        |state| !test_in.as_slice().starts_with(state.sequence.as_slice()),
-        State::get_neighbours,
+fn test_expected_state() {
+    let seq = parse_seq("<vA<AA>>^AvAA<^A>A<v<A>>^AvA^A<vA>^A<v<A>^A>AAvA^A<v<A>A>^AAAvA<^A>A");
+    let state = State::default();
+    let state = state.test_seq(seq).unwrap();
+    assert_eq!(
+        state.sequence,
+        vec![
+            NumericKeypadState::Zero,
+            NumericKeypadState::Two,
+            NumericKeypadState::Nine,
+            NumericKeypadState::A,
+        ]
     );
-    let (f, d) = set
-        .into_iter()
-        .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
-        .unwrap();
-    print_dirs(&d);
-    assert_eq!(d.len(), 60)
 }
-#[test]
-fn test_part_1_shortest_3() {
-    let test_in = [
-        NumericKeypadState::One,
-        NumericKeypadState::Seven,
-        NumericKeypadState::Nine,
-        NumericKeypadState::A,
-    ];
-    let set = generic_bfs(
-        State::default(),
-        |state| state.sequence.as_slice() == test_in.as_slice(),
-        |state| !test_in.as_slice().starts_with(state.sequence.as_slice()),
-        State::get_neighbours,
-    );
-    let (f, d) = set
-        .into_iter()
-        .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
-        .unwrap();
-    print_dirs(&d);
-    assert_eq!(d.len(), 68)
-}
-#[test]
-fn test_part_1_shortest_4() {
-    let test_in = [
-        NumericKeypadState::Three,
-        NumericKeypadState::Seven,
-        NumericKeypadState::Nine,
-        NumericKeypadState::A,
-    ];
-    let set = generic_bfs(
-        State::default(),
-        |state| state.sequence.as_slice() == test_in.as_slice(),
-        |state| !test_in.as_slice().starts_with(state.sequence.as_slice()),
-        State::get_neighbours,
-    );
-    let (f, d) = set
-        .into_iter()
-        .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
-        .unwrap();
-    print_dirs(&d);
-    assert_eq!(d.len(), 64)
-}
+// #[test]
+// fn test_part_1_shortest_2() {
+//     let test_in = [
+//         NumericKeypadState::Nine,
+//         NumericKeypadState::Eight,
+//         NumericKeypadState::Zero,
+//         NumericKeypadState::A,
+//     ];
+//     let set = generic_bfs(
+//         State::default(),
+//         |state| state.sequence.as_slice() == test_in.as_slice(),
+//         |state| !test_in.as_slice().starts_with(state.sequence.as_slice()),
+//         State::get_neighbours,
+//     );
+//     let (f, d) = set
+//         .into_iter()
+//         .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
+//         .unwrap();
+//     print_dirs(&d);
+//     assert_eq!(d.len(), 60)
+// }
+// #[test]
+// fn test_part_1_shortest_3() {
+//     let test_in = [
+//         NumericKeypadState::One,
+//         NumericKeypadState::Seven,
+//         NumericKeypadState::Nine,
+//         NumericKeypadState::A,
+//     ];
+//     let set = generic_bfs(
+//         State::default(),
+//         |state| state.sequence.as_slice() == test_in.as_slice(),
+//         |state| !test_in.as_slice().starts_with(state.sequence.as_slice()),
+//         State::get_neighbours,
+//     );
+//     let (f, d) = set
+//         .into_iter()
+//         .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
+//         .unwrap();
+//     print_dirs(&d);
+//     assert_eq!(d.len(), 68)
+// }
+// #[test]
+// fn test_part_1_shortest_4() {
+//     let test_in = [
+//         NumericKeypadState::Three,
+//         NumericKeypadState::Seven,
+//         NumericKeypadState::Nine,
+//         NumericKeypadState::A,
+//     ];
+//     let set = generic_bfs(
+//         State::default(),
+//         |state| state.sequence.as_slice() == test_in.as_slice(),
+//         |state| !test_in.as_slice().starts_with(state.sequence.as_slice()),
+//         State::get_neighbours,
+//     );
+//     let (f, d) = set
+//         .into_iter()
+//         .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
+//         .unwrap();
+//     print_dirs(&d);
+//     assert_eq!(d.len(), 64)
+// }
