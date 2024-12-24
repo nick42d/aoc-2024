@@ -1,24 +1,36 @@
-use crate::utils::{generic_dijkstra, Direction};
+use crate::utils::{
+    generic_bfs, generic_bfs_nohistory, generic_dfs_nohistory, generic_dijkstra, Direction,
+};
 use std::{
     collections::{BinaryHeap, HashMap, HashSet, VecDeque},
     fmt::Debug,
     hash::Hash,
 };
 
-#[derive(Hash, Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct State {
+#[derive(Hash, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct State<const N: usize> {
     sequence: Vec<NumericKeypadState>,
     // Robot 0 has controls to numeric keypad
-    robot_0: NumericKeypadState,
-    // Robot 1 has controls to Robot 0 directional keypad
-    robot_1: DirectionalKeypadState,
-    // Robot 2 has controls to Robot 1 directional keypad
-    // You have controls to Robot 2 directional keypad.
-    robot_2: DirectionalKeypadState,
+    numeric_robot: NumericKeypadState,
+    // Starting at robot idx 0, each robot has access to subsequent robots directional keypad.
+    //
+    // Last robot has controls to numeric_robot.
+    // You have controls to robot idx 0 directional keypad.
+    directional_robots: [DirectionalKeypadState; N],
 }
 
-impl State {
-    fn get_neighbours(self, _: &()) -> impl Iterator<Item = (Self, DirectionalKeypadState, usize)> {
+impl<const N: usize> Default for State<N> {
+    fn default() -> Self {
+        State {
+            sequence: vec![],
+            numeric_robot: Default::default(),
+            directional_robots: [DirectionalKeypadState::default(); N],
+        }
+    }
+}
+
+impl<const N: usize> State<N> {
+    fn get_neighbours(self, _: &()) -> impl Iterator<Item = (Self, DirectionalKeypadState)> {
         let seq_len = self.sequence.len();
         [
             DirectionalKeypadState::A,
@@ -28,55 +40,40 @@ impl State {
             DirectionalKeypadState::Right,
         ]
         .into_iter()
-        .filter_map(move |d| Some((self.clone().press_directional(d)?, d, 1)))
+        .filter_map(move |d| Some((self.clone().press_directional_n(d, 0)?, d)))
     }
-    fn test_seq(mut self, seq: impl IntoIterator<Item = DirectionalKeypadState>) -> Option<Self> {
-        for d in seq {
-            self = self.press_directional(d)?;
+    /// If a failure is encountered, returns the index.
+    fn test_seq(
+        mut self,
+        seq: impl IntoIterator<Item = DirectionalKeypadState>,
+    ) -> Result<Self, usize> {
+        for (i, d) in seq.into_iter().enumerate() {
+            self = self.press_directional_n(d, 0).ok_or(i)?;
         }
-        Some(self)
+        Ok(self)
     }
-    fn press_directional(mut self, d: DirectionalKeypadState) -> Option<Self> {
-        match d {
-            DirectionalKeypadState::A => match self.robot_2 {
-                DirectionalKeypadState::A => match self.robot_1 {
-                    DirectionalKeypadState::A => {
-                        self.sequence.push(self.robot_0);
-                        Some(self)
-                    }
-                    dir => {
-                        self.robot_0 = self.robot_0.move_arm(dir.get_dir_unchecked())?;
-                        Some(self)
-                    }
-                },
-                dir => {
-                    self.robot_1 = self.robot_1.move_arm(dir.get_dir_unchecked())?;
-                    Some(self)
+    fn press_directional_n(mut self, d: DirectionalKeypadState, n: usize) -> Option<Self> {
+        if n == N {
+            match d {
+                DirectionalKeypadState::A => {
+                    self.sequence.push(self.numeric_robot);
+                    return Some(self);
                 }
-            },
-            DirectionalKeypadState::Up => {
-                let new_robot_2 = self.robot_2.move_arm(Direction::Up)?;
-                let mut this = self.clone();
-                this.robot_2 = new_robot_2;
-                Some(this)
+                dir => {
+                    self.numeric_robot = self.numeric_robot.move_arm(dir.get_dir_unchecked())?;
+                    return Some(self);
+                }
             }
-            DirectionalKeypadState::Down => {
-                let new_robot_2 = self.robot_2.move_arm(Direction::Down)?;
-                let mut this = self.clone();
-                this.robot_2 = new_robot_2;
-                Some(this)
+        }
+        match d {
+            DirectionalKeypadState::A => {
+                let next_dir = self.directional_robots[n];
+                self.press_directional_n(next_dir, n + 1)
             }
-            DirectionalKeypadState::Left => {
-                let new_robot_2 = self.robot_2.move_arm(Direction::Left)?;
-                let mut this = self.clone();
-                this.robot_2 = new_robot_2;
-                Some(this)
-            }
-            DirectionalKeypadState::Right => {
-                let new_robot_2 = self.robot_2.move_arm(Direction::Right)?;
-                let mut this = self.clone();
-                this.robot_2 = new_robot_2;
-                Some(this)
+            dir => {
+                self.directional_robots[n] =
+                    self.directional_robots[n].move_arm(dir.get_dir_unchecked())?;
+                Some(self)
             }
         }
     }
@@ -116,7 +113,8 @@ impl NumericKeypadState {
             (NumericKeypadState::Two, Direction::Right) => Some(NumericKeypadState::Three),
             (NumericKeypadState::Three, Direction::Up) => Some(NumericKeypadState::Six),
             (NumericKeypadState::Three, Direction::Left) => Some(NumericKeypadState::Two),
-            (NumericKeypadState::Three, _) => None,
+            (NumericKeypadState::Three, Direction::Down) => Some(NumericKeypadState::A),
+            (NumericKeypadState::Three, Direction::Right) => None,
             (NumericKeypadState::Four, Direction::Up) => Some(NumericKeypadState::Seven),
             (NumericKeypadState::Four, Direction::Down) => Some(NumericKeypadState::One),
             (NumericKeypadState::Four, Direction::Right) => Some(NumericKeypadState::Five),
@@ -183,7 +181,7 @@ impl DirectionalKeypadState {
     }
 }
 
-fn parse_seq(s: &str) -> impl Iterator<Item = DirectionalKeypadState> + '_ {
+fn parse_directional(s: &str) -> impl Iterator<Item = DirectionalKeypadState> + '_ {
     s.chars().map(|c| match c {
         'A' => DirectionalKeypadState::A,
         '^' => DirectionalKeypadState::Up,
@@ -192,6 +190,29 @@ fn parse_seq(s: &str) -> impl Iterator<Item = DirectionalKeypadState> + '_ {
         '>' => DirectionalKeypadState::Right,
         _ => unreachable!(),
     })
+}
+
+fn get_numeric_code(s: &str) -> usize {
+    s.trim_end_matches("A").parse().unwrap()
+}
+
+fn parse_numeric(s: &str) -> Vec<NumericKeypadState> {
+    s.chars()
+        .map(|c| match c {
+            'A' => NumericKeypadState::A,
+            '0' => NumericKeypadState::Zero,
+            '1' => NumericKeypadState::One,
+            '2' => NumericKeypadState::Two,
+            '3' => NumericKeypadState::Three,
+            '4' => NumericKeypadState::Four,
+            '5' => NumericKeypadState::Five,
+            '6' => NumericKeypadState::Six,
+            '7' => NumericKeypadState::Seven,
+            '8' => NumericKeypadState::Eight,
+            '9' => NumericKeypadState::Nine,
+            _ => unreachable!(),
+        })
+        .collect()
 }
 
 fn print_dirs(v: &[DirectionalKeypadState]) {
@@ -207,14 +228,61 @@ fn print_dirs(v: &[DirectionalKeypadState]) {
     println!();
 }
 
+fn solve_part_1(s: &str) -> usize {
+    let mut total_complexity = 0;
+    for line in s.lines() {
+        let input = parse_numeric(line);
+        let code = get_numeric_code(line);
+        let shortest_len = shortest_len::<2>(&input);
+        total_complexity += shortest_len * code
+    }
+    total_complexity
+}
+
+fn solve_part_2(s: &str) -> usize {
+    let mut total_complexity = 0;
+    for line in s.lines() {
+        println!("Running");
+        let input = parse_numeric(line);
+        let code = get_numeric_code(line);
+        let shortest_len = shortest_len::<10>(&input);
+        total_complexity += shortest_len * code
+    }
+    total_complexity
+}
+
 pub(crate) fn part_1(input: String) {
-    todo!()
+    println!("Total complexity is {}", solve_part_1(&input));
 }
 
 pub(crate) fn part_2(input: String) {
-    todo!()
+    println!("Total complexity is {}", solve_part_2(&input));
 }
 
+fn shortest_len<const N: usize>(codes: &[NumericKeypadState]) -> usize {
+    let set = generic_dfs_nohistory(
+        State::<N>::default(),
+        |state, _| state.sequence.as_slice() == codes,
+        |state, _| !codes.starts_with(state.sequence.as_slice()),
+        State::get_neighbours,
+        &(),
+    );
+    let (f, w) = set
+        .into_iter()
+        .find(|(s, _)| s.sequence.as_slice() == codes)
+        .unwrap();
+    w
+}
+
+#[test]
+fn test_part_1() {
+    let input = "029A
+980A
+179A
+456A
+379A";
+    assert_eq!(solve_part_1(input), 126384);
+}
 #[test]
 fn test_part_1_shortest_1() {
     let test_in = [
@@ -223,24 +291,13 @@ fn test_part_1_shortest_1() {
         NumericKeypadState::Nine,
         NumericKeypadState::A,
     ];
-    let set = generic_dijkstra(
-        State::default(),
-        |state, _| state.sequence.as_slice() == test_in.as_slice(),
-        |state, _| !test_in.as_slice().starts_with(state.sequence.as_slice()),
-        State::get_neighbours,
-        &(),
-    );
-    let (f, d) = set
-        .into_iter()
-        .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
-        .unwrap();
-    print_dirs(&d.1);
-    assert_eq!(d.1.len(), 68)
+    assert_eq!(shortest_len::<2>(&test_in), 68)
 }
 #[test]
 fn test_expected_state() {
-    let seq = parse_seq("<vA<AA>>^AvAA<^A>A<v<A>>^AvA^A<vA>^A<v<A>^A>AAvA^A<v<A>A>^AAAvA<^A>A");
-    let state = State::default();
+    let seq =
+        parse_directional("<vA<AA>>^AvAA<^A>A<v<A>>^AvA^A<vA>^A<v<A>^A>AAvA^A<v<A>A>^AAAvA<^A>A");
+    let state = State::<2>::default();
     let state = state.test_seq(seq).unwrap();
     assert_eq!(
         state.sequence,
@@ -252,66 +309,3 @@ fn test_expected_state() {
         ]
     );
 }
-// #[test]
-// fn test_part_1_shortest_2() {
-//     let test_in = [
-//         NumericKeypadState::Nine,
-//         NumericKeypadState::Eight,
-//         NumericKeypadState::Zero,
-//         NumericKeypadState::A,
-//     ];
-//     let set = generic_bfs(
-//         State::default(),
-//         |state| state.sequence.as_slice() == test_in.as_slice(),
-//         |state| !test_in.as_slice().starts_with(state.sequence.as_slice()),
-//         State::get_neighbours,
-//     );
-//     let (f, d) = set
-//         .into_iter()
-//         .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
-//         .unwrap();
-//     print_dirs(&d);
-//     assert_eq!(d.len(), 60)
-// }
-// #[test]
-// fn test_part_1_shortest_3() {
-//     let test_in = [
-//         NumericKeypadState::One,
-//         NumericKeypadState::Seven,
-//         NumericKeypadState::Nine,
-//         NumericKeypadState::A,
-//     ];
-//     let set = generic_bfs(
-//         State::default(),
-//         |state| state.sequence.as_slice() == test_in.as_slice(),
-//         |state| !test_in.as_slice().starts_with(state.sequence.as_slice()),
-//         State::get_neighbours,
-//     );
-//     let (f, d) = set
-//         .into_iter()
-//         .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
-//         .unwrap();
-//     print_dirs(&d);
-//     assert_eq!(d.len(), 68)
-// }
-// #[test]
-// fn test_part_1_shortest_4() {
-//     let test_in = [
-//         NumericKeypadState::Three,
-//         NumericKeypadState::Seven,
-//         NumericKeypadState::Nine,
-//         NumericKeypadState::A,
-//     ];
-//     let set = generic_bfs(
-//         State::default(),
-//         |state| state.sequence.as_slice() == test_in.as_slice(),
-//         |state| !test_in.as_slice().starts_with(state.sequence.as_slice()),
-//         State::get_neighbours,
-//     );
-//     let (f, d) = set
-//         .into_iter()
-//         .find(|(s, _)| s.sequence.as_slice() == test_in.as_slice())
-//         .unwrap();
-//     print_dirs(&d);
-//     assert_eq!(d.len(), 64)
-// }

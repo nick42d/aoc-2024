@@ -16,8 +16,8 @@ fn parse_input(s: &str) -> Grid<Tile> {
 #[derive(Copy, Hash, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum CheatTimes {
     Zero,
-    One,
-    Two,
+    One(Point),
+    Two(Point, Point),
 }
 
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -36,7 +36,8 @@ fn cheating_dijkstra(
     let cheat = if cheat_enabled {
         CheatTimes::Zero
     } else {
-        CheatTimes::Two
+        // Hack to disable cheat
+        CheatTimes::Two(Point::new(0, 0), Point::new(0, 0))
     };
     // Queue keeps track of which visited point has the lowest score so far.
     let mut queue = BinaryHeap::new();
@@ -81,7 +82,7 @@ fn cheating_dijkstra(
                         Reverse(DijkstraNode {
                             dist: next_dist + 1,
                             p: n,
-                            cheat: CheatTimes::One,
+                            cheat: CheatTimes::One(n),
                         })
                     })
                     .chain(
@@ -98,31 +99,32 @@ fn cheating_dijkstra(
                             }),
                     ),
             ) as Box<dyn Iterator<Item = Reverse<DijkstraNode>>>,
-            CheatTimes::One => Box::new(
+            CheatTimes::One(c1) => Box::new(
                 next_p
                     .adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
                     .into_iter()
-                    .map(|n| {
+                    .map(move |n| {
                         Reverse(DijkstraNode {
                             dist: next_dist + 1,
                             p: n,
-                            cheat: CheatTimes::Two,
+                            cheat: CheatTimes::Two(c1, n),
                         })
                     }),
             ) as Box<dyn Iterator<Item = Reverse<DijkstraNode>>>,
-            CheatTimes::Two => Box::new(
+            CheatTimes::Two(c1, c2) => Box::new(
                 next_p
                     .adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
                     .into_iter()
                     .filter(|n| g.get_cell_unchecked(*n) != &Tile::Wall)
-                    .map(|n| {
+                    .map(move |n| {
                         Reverse(DijkstraNode {
                             dist: next_dist + 1,
                             p: n,
-                            cheat: CheatTimes::Two,
+                            cheat: CheatTimes::Two(c1, c2),
                         })
                     }),
-            ) as Box<dyn Iterator<Item = Reverse<DijkstraNode>>>,
+            )
+                as Box<dyn Iterator<Item = Reverse<DijkstraNode>>>,
         };
         for m in next_moves.into_iter() {
             println!("{:?}", m);
