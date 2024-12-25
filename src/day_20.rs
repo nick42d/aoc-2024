@@ -1,12 +1,11 @@
+use crate::{
+    day_16::{char_to_tile, Tile},
+    utils::{Bfs, Grid, Point},
+};
 use std::{
     cmp::Reverse,
     collections::{hash_map::Entry, BinaryHeap, HashMap},
     fs::DirEntry,
-};
-
-use crate::{
-    day_16::{char_to_tile, Tile},
-    utils::{Grid, Point},
 };
 
 fn parse_input(s: &str) -> Grid<Tile> {
@@ -14,7 +13,7 @@ fn parse_input(s: &str) -> Grid<Tile> {
 }
 
 #[derive(Copy, Hash, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-enum CheatTimes {
+enum CheatState {
     Zero,
     One(Point),
     Two(Point, Point),
@@ -23,147 +22,85 @@ enum CheatTimes {
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 struct DijkstraNode {
     dist: usize,
-    cheat: CheatTimes,
+    cheat: CheatState,
     p: Point,
 }
 
-fn cheating_dijkstra(
-    cheat_enabled: bool,
-    g: &Grid<Tile>,
-) -> HashMap<Point, HashMap<CheatTimes, usize>> {
-    let start = g.find_unchecked(Tile::Start);
-    let target = g.find_unchecked(Tile::End);
-    let cheat = if cheat_enabled {
-        CheatTimes::Zero
-    } else {
-        // Hack to disable cheat
-        CheatTimes::Two(Point::new(0, 0), Point::new(0, 0))
+fn next_moves(
+    p: Point,
+    c: CheatState,
+    g: &'_ Grid<Tile>,
+) -> impl Iterator<Item = ((Point, CheatState), ())> + '_ {
+    // Neighbours are:
+    // - In bounds
+    // - Non-corrupted
+    let next_moves = match c {
+        CheatState::Zero => Box::new(
+            p.adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
+                .into_iter()
+                .filter(|n| g.get_cell_unchecked(*n) == &Tile::Wall)
+                .map(|n| (n, CheatState::One(n)))
+                .chain(
+                    p.adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
+                        .into_iter()
+                        .filter(|n| g.get_cell_unchecked(*n) != &Tile::Wall)
+                        .map(|n| (n, CheatState::Zero)),
+                ),
+        ) as Box<dyn Iterator<Item = _>>,
+        CheatState::One(c1) => Box::new(
+            p.adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
+                .into_iter()
+                .map(move |n| (n, CheatState::Two(c1, n))),
+        ) as Box<dyn Iterator<Item = _>>,
+        CheatState::Two(c1, c2) => Box::new(
+            p.adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
+                .into_iter()
+                .filter(|n| g.get_cell_unchecked(*n) != &Tile::Wall)
+                .map(move |n| (n, CheatState::Two(c1, c2))),
+        ) as Box<dyn Iterator<Item = _>>,
     };
-    // Queue keeps track of which visited point has the lowest score so far.
-    let mut queue = BinaryHeap::new();
-    // Best keeps track of the best score for each point so far.
-    let mut best = HashMap::new();
-    // Initialisation.
-    queue.push(Reverse(DijkstraNode {
-        dist: 0,
-        p: start,
-        cheat,
-    }));
-
-    best.insert(start, HashMap::from([(cheat, 0usize)]));
-
-    loop {
-        // Loop over all pending nodes in the queue, starting at the current shortest
-        // path.
-        // We are finished if either:
-        // - found goal
-        // - no nodes left.
-        let Some(Reverse(DijkstraNode {
-            dist: next_dist,
-            p: next_p,
-            cheat: next_cheat,
-        })) = queue.pop()
-        else {
-            break;
-        };
-        // if next_p == target {
-        //     break;
-        // }
-        // Neighbours are:
-        // - In bounds
-        // - Non-corrupted
-        let next_moves = match next_cheat {
-            CheatTimes::Zero => Box::new(
-                next_p
-                    .adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
-                    .into_iter()
-                    .filter(|n| g.get_cell_unchecked(*n) == &Tile::Wall)
-                    .map(|n| {
-                        Reverse(DijkstraNode {
-                            dist: next_dist + 1,
-                            p: n,
-                            cheat: CheatTimes::One(n),
-                        })
-                    })
-                    .chain(
-                        next_p
-                            .adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
-                            .into_iter()
-                            .filter(|n| g.get_cell_unchecked(*n) != &Tile::Wall)
-                            .map(|n| {
-                                Reverse(DijkstraNode {
-                                    dist: next_dist + 1,
-                                    p: n,
-                                    cheat: CheatTimes::Zero,
-                                })
-                            }),
-                    ),
-            ) as Box<dyn Iterator<Item = Reverse<DijkstraNode>>>,
-            CheatTimes::One(c1) => Box::new(
-                next_p
-                    .adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
-                    .into_iter()
-                    .map(move |n| {
-                        Reverse(DijkstraNode {
-                            dist: next_dist + 1,
-                            p: n,
-                            cheat: CheatTimes::Two(c1, n),
-                        })
-                    }),
-            ) as Box<dyn Iterator<Item = Reverse<DijkstraNode>>>,
-            CheatTimes::Two(c1, c2) => Box::new(
-                next_p
-                    .adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
-                    .into_iter()
-                    .filter(|n| g.get_cell_unchecked(*n) != &Tile::Wall)
-                    .map(move |n| {
-                        Reverse(DijkstraNode {
-                            dist: next_dist + 1,
-                            p: n,
-                            cheat: CheatTimes::Two(c1, c2),
-                        })
-                    }),
-            )
-                as Box<dyn Iterator<Item = Reverse<DijkstraNode>>>,
-        };
-        for m in next_moves.into_iter() {
-            println!("{:?}", m);
-            match best.get(&m.0.p) {
-                Some(h) => {
-                    if !h.iter().any(|(c, d)| *d < m.0.dist && *c >= m.0.cheat) {
-                        // Best distance so far & at lowest or equal lowest cheat level.
-                        best.insert(m.0.p, HashMap::from([(m.0.cheat, m.0.dist)]));
-                    } else if let Some(mp) = h.get(&m.0.cheat) {
-                        if *mp <= m.0.dist {
-                            // Been hear before at same distance, same cheat level. Don't need to
-                            // revisit.
-                            continue;
-                        }
-                        // Best distance so far at current cheat level.
-                        best.get_mut(&m.0.p).unwrap().insert(m.0.cheat, m.0.dist);
-                    } else {
-                        // Haven't been here at current cheat level before.
-                        best.get_mut(&m.0.p).unwrap().insert(m.0.cheat, m.0.dist);
-                    }
-                    queue.push(m);
-                }
-                None => {
-                    best.insert(m.0.p, HashMap::from([(m.0.cheat, m.0.dist)]));
-                    queue.push(m);
-                }
-            }
-        }
-    }
-    best
+    next_moves.zip(std::iter::repeat(()))
 }
 
 fn solve_part_1(s: &str, at_least_ps: usize) -> usize {
     let g = parse_input(s);
-    cheating_dijkstra(true, &g).len()
+    let start = g.find_unchecked(Tile::Start);
+    let target = g.find_unchecked(Tile::End);
+    let shortest_path = *Bfs::new_with_refdata(
+        (start, CheatState::Two(Point::new(0, 0), Point::new(0, 0))),
+        |(p, _), b| p == &target,
+        |(point, cheat), grid| next_moves(point, cheat, grid),
+        &g,
+    )
+    .execute()
+    .iter()
+    .find_map(|((p, c), w)| if p == &target { Some(w) } else { None })
+    .unwrap();
+    println!("Shortest no-cheat path is {shortest_path}");
+    println!(
+        "Therefore, need to find all paths using cheats less than or equal {}",
+        shortest_path - 100
+    );
+    let cheats = Bfs::new_with_refdata(
+        (start, CheatState::Zero),
+        |_, _| false,
+        |(point, cheat), grid| next_moves(point, cheat, grid),
+        &g,
+    )
+    .with_max_len(shortest_path - 100)
+    // .in_debug_mode()
+    .execute()
+    .iter()
+    .filter_map(|((p, c), h)| if p == &target { Some(h) } else { None })
+    .copied()
+    // .filter(|w| *w >= shortest_path - 100)
+    .collect::<Vec<usize>>();
+    println!("Cheats: {:?}", cheats);
+    cheats.len()
 }
 
 pub(crate) fn part_1(input: String) {
-    println!("Shortest path: {}", solve_part_1(&input, 0));
+    println!("Cheats that save 100ps: {}", solve_part_1(&input, 0));
 }
 
 pub(crate) fn part_2(input: String) {
@@ -174,7 +111,8 @@ pub(crate) fn part_2(input: String) {
 mod tests {
     use crate::{
         day_16::Tile,
-        day_20::{cheating_dijkstra, parse_input, solve_part_1},
+        day_20::{next_moves, parse_input, solve_part_1, CheatState},
+        utils::{Bfs, Point},
     };
 
     const TEST_DATA: &str = "###############
@@ -195,15 +133,45 @@ mod tests {
     #[test]
     fn test_part_1_no_cheat() {
         let g = parse_input(TEST_DATA);
+        let start = g.find_unchecked(Tile::Start);
         let fin = g.find_unchecked(Tile::End);
-        let dijkstra = cheating_dijkstra(false, &g);
-        assert_eq!(dijkstra.get(&fin).unwrap().values().next().unwrap(), &84);
+        let graph = Bfs::new_with_refdata(
+            (start, CheatState::Two(Point::new(0, 0), Point::new(0, 0))),
+            move |(point, _), b| *point == fin,
+            |(point, cheat), grid| next_moves(point, cheat, grid),
+            &g,
+        )
+        .with_history()
+        .execute();
+        assert_eq!(
+            graph
+                .get(&(fin, CheatState::Two(Point::new(0, 0), Point::new(0, 0))))
+                .unwrap()
+                .len(),
+            84
+        );
     }
     #[test]
     fn test_part_1_best_cheat() {
         let g = parse_input(TEST_DATA);
+        let start = g.find_unchecked(Tile::Start);
         let fin = g.find_unchecked(Tile::End);
-        let dijkstra = cheating_dijkstra(true, &g);
-        assert_eq!(dijkstra.get(&fin).unwrap().values().min().unwrap(), &20);
+        let graph = Bfs::new_with_refdata(
+            (start, CheatState::Zero),
+            move |(point, _), b| *point == fin,
+            |(point, cheat), grid| next_moves(point, cheat, grid),
+            &g,
+        )
+        .with_history()
+        .execute();
+        assert_eq!(
+            graph
+                .into_iter()
+                .find(|((k1, k2), v)| *k1 == fin)
+                .unwrap()
+                .1
+                .len(),
+            20
+        );
     }
 }

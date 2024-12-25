@@ -260,7 +260,7 @@ pub(crate) fn part_2(input: String) {
 }
 
 fn shortest_len<const N: usize>(codes: &[NumericKeypadState]) -> usize {
-    let set = generic_dfs_nohistory(
+    let set = generic_bfs_nohistory(
         State::<N>::default(),
         |state, _| state.sequence.as_slice() == codes,
         |state, _| !codes.starts_with(state.sequence.as_slice()),
