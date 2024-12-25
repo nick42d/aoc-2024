@@ -81,22 +81,34 @@ fn solve_part_1(s: &str, at_least_ps: usize) -> usize {
         "Therefore, need to find all paths using cheats less than or equal {}",
         shortest_path - 100
     );
-    let cheats = Bfs::new_with_refdata(
+    let shortest_cheat_path = *Bfs::new_with_refdata(
         (start, CheatState::Zero),
-        |_, _| false,
+        |(p, _), b| p == &target,
         |(point, cheat), grid| next_moves(point, cheat, grid),
         &g,
     )
-    .with_max_len(shortest_path - 100)
-    // .in_debug_mode()
     .execute()
     .iter()
-    .filter_map(|((p, c), h)| if p == &target { Some(h) } else { None })
-    .copied()
-    // .filter(|w| *w >= shortest_path - 100)
-    .collect::<Vec<usize>>();
-    println!("Cheats: {:?}", cheats);
-    cheats.len()
+    .find_map(|((p, c), w)| if p == &target { Some(w) } else { None })
+    .unwrap();
+    println!("Shortest cheat path is {shortest_cheat_path}");
+    // let cheats = Bfs::new_with_refdata(
+    //     (start, CheatState::Zero),
+    //     |_, _| false,
+    //     |(point, cheat), grid| next_moves(point, cheat, grid),
+    //     &g,
+    // )
+    // .with_max_len(shortest_path - 100)
+    // .in_debug_mode()
+    // .execute()
+    // .iter()
+    // .filter_map(|((p, c), h)| if p == &target { Some(h) } else { None })
+    // .copied()
+    // // .filter(|w| *w >= shortest_path - 100)
+    // .collect::<Vec<usize>>();
+    // println!("Cheats: {:?}", cheats);
+    // cheats.len()
+    0
 }
 
 pub(crate) fn part_1(input: String) {

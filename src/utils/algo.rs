@@ -37,9 +37,10 @@ impl<M: Clone> Tracking<M> for WithDistance {
     }
 }
 
-pub struct Bfs<'a, T, FG, FN, R, M, Tr> {
+pub struct Bfs<'a, T, FG, FC, FN, R, M, Tr> {
     init: T,
     goal_check: FG,
+    continue_check: FC,
     get_neighbours: FN,
     reference_data: &'a R,
     message_type: PhantomData<M>,
@@ -47,7 +48,7 @@ pub struct Bfs<'a, T, FG, FN, R, M, Tr> {
     tracking: Tr,
     max_len: Option<usize>,
 }
-impl<T, FG, FN, R, M> Bfs<'_, T, FG, FN, R, M, WithDistance> {
+impl<T, FG, FC, FN, R, M> Bfs<'_, T, FG, FC, FN, R, M, WithDistance> {
     pub fn new<'b, I>(
         init: T,
         goal_check: impl Fn(&T) -> bool,
@@ -55,6 +56,7 @@ impl<T, FG, FN, R, M> Bfs<'_, T, FG, FN, R, M, WithDistance> {
     ) -> Bfs<
         'static,
         T,
+        impl Fn(&'b T, &'static R) -> bool,
         impl Fn(&'b T, &'static R) -> bool,
         impl Fn(T, &'static R) -> I,
         (),
@@ -75,6 +77,7 @@ impl<T, FG, FN, R, M> Bfs<'_, T, FG, FN, R, M, WithDistance> {
             message_type: PhantomData,
             tracking: WithDistance,
             max_len: None,
+            continue_check: |_, _| false,
         }
     }
     pub fn new_with_refdata<'a, I>(
@@ -82,7 +85,7 @@ impl<T, FG, FN, R, M> Bfs<'_, T, FG, FN, R, M, WithDistance> {
         goal_check: FG,
         get_neighbours: FN,
         reference_data: &'a R,
-    ) -> Bfs<'a, T, FG, FN, R, M, WithDistance>
+    ) -> Bfs<'a, T, FG, impl Fn(&'a T, &'static R) -> bool, FN, R, M, WithDistance>
     where
         I: IntoIterator<Item = (T, M)> + 'a,
         FG: Fn(&T, &R) -> bool,
@@ -99,11 +102,12 @@ impl<T, FG, FN, R, M> Bfs<'_, T, FG, FN, R, M, WithDistance> {
             message_type: PhantomData,
             tracking: WithDistance,
             max_len: None,
+            continue_check: |_, _| false,
         }
     }
 }
-impl<T, FG, FN, R, M, Tr> Bfs<'_, T, FG, FN, R, M, Tr> {
-    pub fn with_history<'a>(mut self) -> Bfs<'a, T, FG, FN, R, M, WithHistory>
+impl<T, FG, FC, FN, R, M, Tr> Bfs<'_, T, FG, FC, FN, R, M, Tr> {
+    pub fn with_history<'a>(mut self) -> Bfs<'a, T, FG, FC, FN, R, M, WithHistory>
     where
         Self: 'a,
     {
@@ -116,6 +120,7 @@ impl<T, FG, FN, R, M, Tr> Bfs<'_, T, FG, FN, R, M, Tr> {
             debug,
             tracking,
             max_len,
+            continue_check,
         } = self;
         Bfs {
             init,
@@ -126,6 +131,38 @@ impl<T, FG, FN, R, M, Tr> Bfs<'_, T, FG, FN, R, M, Tr> {
             debug,
             tracking: WithHistory,
             max_len,
+            continue_check,
+        }
+    }
+    pub fn with_continue_check<'a, FCn>(
+        mut self,
+        state_shortcircuit: FCn,
+    ) -> Bfs<'a, T, FG, FCn, FN, R, M, WithHistory>
+    where
+        Self: 'a,
+        FCn: Fn(&T, &R) -> bool,
+    {
+        let Self {
+            init,
+            goal_check,
+            get_neighbours,
+            reference_data,
+            message_type,
+            debug,
+            tracking,
+            max_len,
+            continue_check: _,
+        } = self;
+        Bfs {
+            init,
+            goal_check,
+            get_neighbours,
+            reference_data,
+            message_type,
+            debug,
+            tracking: WithHistory,
+            max_len,
+            continue_check: state_shortcircuit,
         }
     }
     pub fn with_max_len(mut self, max_len: usize) -> Self {
@@ -137,11 +174,12 @@ impl<T, FG, FN, R, M, Tr> Bfs<'_, T, FG, FN, R, M, Tr> {
         self
     }
 }
-impl<'a, T, FG, FN, R, M, Tr> Bfs<'a, T, FG, FN, R, M, Tr> {
+impl<'a, T, FG, FC, FN, R, M, Tr> Bfs<'a, T, FG, FC, FN, R, M, Tr> {
     /// Returns list of all visited locations and the moves taken.
     pub fn execute<I>(self) -> HashMap<T, Tr::Output>
     where
         FG: Fn(&T, &R) -> bool,
+        FC: Fn(&T, &R) -> bool,
         FN: Fn(T, &'a R) -> I,
         I: IntoIterator<Item = (T, M)> + 'a,
         T: Eq + Hash + Clone + Debug,
@@ -157,6 +195,7 @@ impl<'a, T, FG, FN, R, M, Tr> Bfs<'a, T, FG, FN, R, M, Tr> {
             debug,
             tracking,
             max_len,
+            continue_check,
         } = self;
         let mut queue = VecDeque::new();
         let mut explored = HashMap::new();
@@ -171,6 +210,9 @@ impl<'a, T, FG, FN, R, M, Tr> Bfs<'a, T, FG, FN, R, M, Tr> {
             }
             if goal_check(&next_to_visit, reference_data) {
                 break;
+            }
+            if continue_check(&next_to_visit, reference_data) {
+                continue;
             }
             if let Some(max_len) = max_len {
                 if Tr::len(&tracking) > max_len {
