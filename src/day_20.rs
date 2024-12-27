@@ -19,13 +19,6 @@ enum CheatState {
     Two(Point, Point),
 }
 
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-struct DijkstraNode {
-    dist: usize,
-    cheat: CheatState,
-    p: Point,
-}
-
 fn next_moves(
     p: Point,
     c: CheatState,
@@ -56,6 +49,7 @@ fn next_moves(
             p.adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
                 .into_iter()
                 .filter(|n| g.get_cell_unchecked(*n) != &Tile::Wall)
+                .filter(move |n| *n != c1)
                 .map(move |n| (n, CheatState::Two(c1, c2))),
         ) as Box<dyn Iterator<Item = _>>,
     };
@@ -69,6 +63,7 @@ fn solve_part_1(s: &str, at_least_ps: usize) -> usize {
     let shortest_path = *Bfs::new_with_refdata(
         (start, CheatState::Two(Point::new(0, 0), Point::new(0, 0))),
         |(p, _), b| p == &target,
+        |t| std::iter::once(*t),
         |(point, cheat), grid| next_moves(point, cheat, grid),
         &g,
     )
@@ -76,39 +71,64 @@ fn solve_part_1(s: &str, at_least_ps: usize) -> usize {
     .iter()
     .find_map(|((p, c), w)| if p == &target { Some(w) } else { None })
     .unwrap();
+    let shortest_cheat_path = *Bfs::new_with_refdata(
+        (start, CheatState::Zero),
+        |(p, _), b| p == &target,
+        |t| std::iter::once(*t),
+        |(point, cheat), grid| next_moves(point, cheat, grid),
+        &g,
+    )
+    .execute()
+    .iter()
+    .find_map(|((p, c), w)| if p == &target { Some(w) } else { None })
+    .unwrap();
+    let mut cheats = Bfs::new_with_refdata(
+        (start, CheatState::Zero),
+        |_, _| false,
+        |(p, c)| match c {
+            CheatState::Zero => vec![(*p, CheatState::Zero)],
+            CheatState::One(point) => vec![(*p, CheatState::One(*point)), (*p, CheatState::Zero)],
+            CheatState::Two(point, point1) => vec![
+                (*p, CheatState::Two(*point, *point1)),
+                (*p, CheatState::Zero),
+            ],
+        },
+        |(point, cheat), grid| next_moves(point, cheat, grid),
+        &g,
+    )
+    .with_max_len(shortest_path)
+    .in_debug_mode()
+    .execute()
+    .into_iter()
+    .filter_map(|((p, c), h)| if p == target { Some((p, c, h)) } else { None })
+    .filter(|(p, c, w)| *w < (shortest_path - 100))
+    .filter(|(p, c, w)| matches!(c, CheatState::Two(_, _)))
+    .collect::<Vec<_>>();
+    cheats.sort_by_key(|(p, c, w)| *c);
+    cheats.dedup_by_key(|(p, c, w)| *c);
     println!("Shortest no-cheat path is {shortest_path}");
     println!(
         "Therefore, need to find all paths using cheats less than or equal {}",
         shortest_path - 100
     );
-    let shortest_cheat_path = *Bfs::new_with_refdata(
-        (start, CheatState::Zero),
-        |(p, _), b| p == &target,
-        |(point, cheat), grid| next_moves(point, cheat, grid),
-        &g,
-    )
-    .execute()
-    .iter()
-    .find_map(|((p, c), w)| if p == &target { Some(w) } else { None })
-    .unwrap();
     println!("Shortest cheat path is {shortest_cheat_path}");
-    // let cheats = Bfs::new_with_refdata(
-    //     (start, CheatState::Zero),
-    //     |_, _| false,
-    //     |(point, cheat), grid| next_moves(point, cheat, grid),
-    //     &g,
-    // )
-    // .with_max_len(shortest_path - 100)
-    // .in_debug_mode()
-    // .execute()
-    // .iter()
-    // .filter_map(|((p, c), h)| if p == &target { Some(h) } else { None })
-    // .copied()
-    // // .filter(|w| *w >= shortest_path - 100)
-    // .collect::<Vec<usize>>();
-    // println!("Cheats: {:?}", cheats);
-    // cheats.len()
-    0
+    println!("Cheats: {:?}", cheats);
+    g.print_specialised(|p| {
+        if cheats
+            .iter()
+            .any(|(_, c, w)| matches!(c, CheatState::Two(p_n, _) if p_n == &p))
+        {
+            return Some('1');
+        }
+        if cheats
+            .iter()
+            .any(|(_, c, w)| matches!(c, CheatState::Two(_, p_n) if p_n == &p))
+        {
+            return Some('2');
+        }
+        None
+    });
+    cheats.len()
 }
 
 pub(crate) fn part_1(input: String) {
@@ -150,6 +170,7 @@ mod tests {
         let graph = Bfs::new_with_refdata(
             (start, CheatState::Two(Point::new(0, 0), Point::new(0, 0))),
             move |(point, _), b| *point == fin,
+            |t| std::iter::once(*t),
             |(point, cheat), grid| next_moves(point, cheat, grid),
             &g,
         )
@@ -171,6 +192,7 @@ mod tests {
         let graph = Bfs::new_with_refdata(
             (start, CheatState::Zero),
             move |(point, _), b| *point == fin,
+            |t| std::iter::once(*t),
             |(point, cheat), grid| next_moves(point, cheat, grid),
             &g,
         )

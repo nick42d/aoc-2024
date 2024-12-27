@@ -209,6 +209,18 @@ impl<T: Display> Grid<T> {
             println!();
         }
     }
+    pub fn print_specialised(&self, special_case: impl Fn(Point) -> Option<char>) {
+        for (y, row) in self.repr.iter().enumerate() {
+            for (x, c) in row.iter().enumerate() {
+                if let Some(special_char) = special_case(Point::new(x, y)) {
+                    print!("{special_char}");
+                } else {
+                    print!("{c}");
+                }
+            }
+            println!();
+        }
+    }
 }
 impl<T: Default> Grid<T> {
     pub fn new_with_default(width: usize, height: usize) -> Self {
