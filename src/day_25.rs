@@ -1,7 +1,8 @@
+const PINS: usize = 5;
+const PIN_HEIGHT: usize = 7;
+
 /// (locks, keys)
 fn parse_input(s: &str) -> (Vec<[usize; 5]>, Vec<[usize; 5]>) {
-    const PINS: usize = 5;
-    const PIN_HEIGHT: usize = 7;
     let mut locks = vec![];
     let mut keys = vec![];
     for pattern in s.split("\n\n") {
@@ -34,6 +35,15 @@ fn parse_input(s: &str) -> (Vec<[usize; 5]>, Vec<[usize; 5]>) {
     (locks, keys)
 }
 
+fn check_fits(lock: &[usize], key: &[usize]) -> bool {
+    // True if none of the pin totals greater than pin height.
+    !lock
+        .iter()
+        .zip(key.iter())
+        .map(|(l, k)| l + k)
+        .any(|total| total >= PIN_HEIGHT - 1)
+}
+
 pub(crate) fn part_1(input: String) {
     todo!()
 }
@@ -49,6 +59,12 @@ fn test_parse() {
     assert_eq!(keys[0], [5, 0, 2, 1, 3]);
 }
 
+#[test]
+fn test_fits() {
+    assert!(!check_fits(&[0, 5, 3, 4, 3], &[5, 0, 2, 1, 3]));
+    assert!(!check_fits(&[0, 5, 3, 4, 3], &[4, 3, 4, 0, 2]));
+    assert!(check_fits(&[0, 5, 3, 4, 3], &[3, 0, 2, 0, 1]));
+}
 const TEST_DATA: &str = "#####
 .####
 .####
