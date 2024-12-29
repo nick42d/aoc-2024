@@ -1,5 +1,5 @@
 use crate::utils::{
-    generic_bfs, generic_bfs_nohistory, generic_dfs_nohistory, generic_dijkstra, Direction,
+    generic_bfs, generic_bfs_nohistory, generic_dfs_nohistory, generic_dijkstra, Bfs, Direction,
 };
 use std::{
     collections::{BinaryHeap, HashMap, HashSet, VecDeque},
@@ -19,6 +19,16 @@ struct State<const N: usize> {
     directional_robots: [DirectionalKeypadState; N],
 }
 
+#[derive(Hash, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct DirectionalOnlyState<const N: usize> {
+    sequence: Vec<DirectionalKeypadState>,
+    // Starting at robot idx 0, each robot has access to subsequent robots directional keypad.
+    //
+    // Last robot has controls to sequence.
+    // You have controls to robot idx 0 directional keypad.
+    directional_robots: [DirectionalKeypadState; N],
+}
+
 impl<const N: usize> Default for State<N> {
     fn default() -> Self {
         State {
@@ -29,7 +39,70 @@ impl<const N: usize> Default for State<N> {
     }
 }
 
+impl<const N: usize> Default for DirectionalOnlyState<N> {
+    fn default() -> Self {
+        DirectionalOnlyState {
+            sequence: vec![],
+            directional_robots: [DirectionalKeypadState::default(); N],
+        }
+    }
+}
+
 impl<const N: usize> State<N> {
+    fn get_neighbours<'a>(
+        self,
+        codes: &'a [NumericKeypadState],
+    ) -> impl Iterator<Item = (Self, DirectionalKeypadState)> + 'a {
+        let seq_len = self.sequence.len();
+        [
+            DirectionalKeypadState::A,
+            DirectionalKeypadState::Up,
+            DirectionalKeypadState::Down,
+            DirectionalKeypadState::Left,
+            DirectionalKeypadState::Right,
+        ]
+        .into_iter()
+        .filter_map(move |d| Some((self.clone().press_directional_n(d, 0)?, d)))
+        .filter(|state| !codes.starts_with(state.0.sequence.as_slice()))
+    }
+    /// If a failure is encountered, returns the index.
+    fn test_seq(
+        mut self,
+        seq: impl IntoIterator<Item = DirectionalKeypadState>,
+    ) -> Result<Self, usize> {
+        for (i, d) in seq.into_iter().enumerate() {
+            self = self.press_directional_n(d, 0).ok_or(i)?;
+        }
+        Ok(self)
+    }
+    fn press_directional_n(mut self, d: DirectionalKeypadState, n: usize) -> Option<Self> {
+        if n == N {
+            match d {
+                DirectionalKeypadState::A => {
+                    self.sequence.push(self.numeric_robot);
+                    return Some(self);
+                }
+                dir => {
+                    self.numeric_robot = self.numeric_robot.move_arm(dir.get_dir_unchecked())?;
+                    return Some(self);
+                }
+            }
+        }
+        match d {
+            DirectionalKeypadState::A => {
+                let next_dir = self.directional_robots[n];
+                self.press_directional_n(next_dir, n + 1)
+            }
+            dir => {
+                self.directional_robots[n] =
+                    self.directional_robots[n].move_arm(dir.get_dir_unchecked())?;
+                Some(self)
+            }
+        }
+    }
+}
+
+impl<const N: usize> DirectionalOnlyState<N> {
     fn get_neighbours(self, _: &()) -> impl Iterator<Item = (Self, DirectionalKeypadState)> {
         let seq_len = self.sequence.len();
         [
@@ -56,11 +129,12 @@ impl<const N: usize> State<N> {
         if n == N {
             match d {
                 DirectionalKeypadState::A => {
-                    self.sequence.push(self.numeric_robot);
+                    self.sequence.push(self.directional_robots[n]);
                     return Some(self);
                 }
                 dir => {
-                    self.numeric_robot = self.numeric_robot.move_arm(dir.get_dir_unchecked())?;
+                    self.directional_robots[n] =
+                        self.directional_robots[n].move_arm(dir.get_dir_unchecked())?;
                     return Some(self);
                 }
             }
@@ -234,7 +308,7 @@ fn solve_part_1(s: &str) -> usize {
         let input = parse_numeric(line);
         let code = get_numeric_code(line);
         let shortest_len = shortest_len::<2>(&input);
-        total_complexity += shortest_len * code
+        total_complexity += shortest_len.1 * code
     }
     total_complexity
 }
@@ -245,8 +319,13 @@ fn solve_part_2(s: &str) -> usize {
         println!("Running");
         let input = parse_numeric(line);
         let code = get_numeric_code(line);
-        let shortest_len = shortest_len::<10>(&input);
-        total_complexity += shortest_len * code
+        let shortest_len_numeric = shortest_len::<1>(&input);
+        println!("Shortest len: {:?}", shortest_len_numeric);
+        let mut shortest_len_directional = shortest_len_directional::<2>(shortest_len_numeric);
+        for i in 2..=25 {
+            let shortest_len_numeric = shortest_len::<1>(&input);
+            println!("Shortest len: {:?}", shortest_len);
+        }
     }
     total_complexity
 }
@@ -259,19 +338,35 @@ pub(crate) fn part_2(input: String) {
     println!("Total complexity is {}", solve_part_2(&input));
 }
 
-fn shortest_len<const N: usize>(codes: &[NumericKeypadState]) -> usize {
-    let set = generic_bfs_nohistory(
+fn shortest_len<const N: usize>(codes: &[NumericKeypadState]) -> (Vec<NumericKeypadState>, usize) {
+    let set = Bfs::new_with_refdata(
         State::<N>::default(),
         |state, _| state.sequence.as_slice() == codes,
-        |state, _| !codes.starts_with(state.sequence.as_slice()),
+        |_, _| false,
         State::get_neighbours,
+    );
+    let (f, w) = set
+        .into_iter()
+        .find(|(s, _)| s.sequence.as_slice() == codes)
+        .unwrap();
+    (f.sequence, w)
+}
+
+fn shortest_len_directional<const N: usize>(
+    codes: &[DirectionalKeypadState],
+) -> (Vec<DirectionalKeypadState>, usize) {
+    let set = generic_bfs_nohistory(
+        DirectionalOnlyState::<N>::default(),
+        |state, _| state.sequence.as_slice() == codes,
+        |state, _| !codes.starts_with(state.sequence.as_slice()),
+        DirectionalOnlyState::get_neighbours,
         &(),
     );
     let (f, w) = set
         .into_iter()
         .find(|(s, _)| s.sequence.as_slice() == codes)
         .unwrap();
-    w
+    (f.sequence, w)
 }
 
 #[test]
@@ -291,7 +386,7 @@ fn test_part_1_shortest_1() {
         NumericKeypadState::Nine,
         NumericKeypadState::A,
     ];
-    assert_eq!(shortest_len::<2>(&test_in), 68)
+    assert_eq!(shortest_len::<2>(&test_in).1, 68)
 }
 #[test]
 fn test_expected_state() {

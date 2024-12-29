@@ -109,6 +109,38 @@ impl Point {
             self.move_direction(Direction::Down),
         ]
     }
+    /// Return all points accessible using n moves.
+    pub fn adjacent_neighbours_n(&self, n: usize) -> Vec<Self> {
+        let mut out = vec![];
+        for x in 0..n {
+            let rem = n - x;
+            for y in 0..rem {
+                out.push(Self::new(self.x + x, self.y + y));
+                if let Some(x) = self.x.checked_sub(x) {
+                    out.push(Self::new(x, self.y + y));
+                }
+                if let Some(y) = self.y.checked_sub(y) {
+                    out.push(Self::new(self.x + x, y));
+                }
+                if let (Some(x), Some(y)) = (self.x.checked_sub(x), self.y.checked_sub(y)) {
+                    out.push(Self::new(x, y));
+                }
+            }
+        }
+        out
+    }
+    /// Return all points accessible using n moves.
+    pub fn adjacent_inbounds_neighbours_n(
+        &self,
+        n: usize,
+        width: usize,
+        height: usize,
+    ) -> Vec<Self> {
+        self.adjacent_neighbours_n(n)
+            .into_iter()
+            .filter(|p| p.x < width && p.y < height)
+            .collect()
+    }
     pub fn adjacent_inbounds_neighbours(&self, width: usize, height: usize) -> Vec<Self> {
         if self.x == 0 && self.y == 0 {
             return vec![
@@ -186,6 +218,11 @@ impl<T> Grid<T> {
     }
     pub fn height(&self) -> usize {
         self.repr.len()
+    }
+    pub fn points(&self) -> impl Iterator<Item = Point> {
+        let w = self.width_unchecked();
+        let h = self.height();
+        (0..w).flat_map(move |x| (0..h).map(move |y| Point::new(x, y)))
     }
 }
 impl<T: PartialEq> Grid<T> {

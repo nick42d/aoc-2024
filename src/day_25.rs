@@ -35,7 +35,7 @@ fn parse_input(s: &str) -> (Vec<[usize; 5]>, Vec<[usize; 5]>) {
     (locks, keys)
 }
 
-fn check_fits(lock: &[usize], key: &[usize]) -> bool {
+fn lock_fits_key(lock: &[usize], key: &[usize]) -> bool {
     // True if none of the pin totals greater than pin height.
     !lock
         .iter()
@@ -44,8 +44,28 @@ fn check_fits(lock: &[usize], key: &[usize]) -> bool {
         .any(|total| total >= PIN_HEIGHT - 1)
 }
 
+fn get_number_of_fits(locks: &[[usize; 5]], keys: &[[usize; 5]]) -> usize {
+    let mut total = 0;
+    for lock in locks {
+        for key in keys {
+            if lock_fits_key(lock, key) {
+                total += 1;
+            }
+        }
+    }
+    total
+}
+
+fn solve_part_1(s: &str) -> usize {
+    let (locks, keys) = parse_input(s);
+    get_number_of_fits(&locks, &keys)
+}
+
 pub(crate) fn part_1(input: String) {
-    todo!()
+    println!(
+        "Total unique lock key pairs that fit: {}",
+        solve_part_1(&input)
+    );
 }
 
 pub(crate) fn part_2(input: String) {
@@ -61,10 +81,16 @@ fn test_parse() {
 
 #[test]
 fn test_fits() {
-    assert!(!check_fits(&[0, 5, 3, 4, 3], &[5, 0, 2, 1, 3]));
-    assert!(!check_fits(&[0, 5, 3, 4, 3], &[4, 3, 4, 0, 2]));
-    assert!(check_fits(&[0, 5, 3, 4, 3], &[3, 0, 2, 0, 1]));
+    assert!(!lock_fits_key(&[0, 5, 3, 4, 3], &[5, 0, 2, 1, 3]));
+    assert!(!lock_fits_key(&[0, 5, 3, 4, 3], &[4, 3, 4, 0, 2]));
+    assert!(lock_fits_key(&[0, 5, 3, 4, 3], &[3, 0, 2, 0, 1]));
 }
+
+#[test]
+fn test_part_1() {
+    assert_eq!(solve_part_1(TEST_DATA), 3);
+}
+
 const TEST_DATA: &str = "#####
 .####
 .####
