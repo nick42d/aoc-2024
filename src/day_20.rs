@@ -154,7 +154,7 @@ fn get_all_cheats(g: &Grid<Tile>, n: usize) -> Vec<(Point, Point)> {
     g.points()
         .flat_map(|cheat_start| {
             cheat_start
-                .adjacent_neighbours_n(n)
+                .adjacent_inbounds_neighbours_n(n, g.width_unchecked(), g.height())
                 .into_iter()
                 .filter(|cheat_end| g.get_cell_unchecked(*cheat_end) != &Tile::Wall)
                 .map(move |cheat_end| (cheat_start, cheat_end))
