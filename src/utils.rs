@@ -17,6 +17,7 @@ pub struct Point {
     y: usize,
 }
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Grid<T> {
     pub repr: Vec<Vec<T>>,
 }

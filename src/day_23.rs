@@ -31,33 +31,28 @@ enum SearchState {
 
 fn get_sets_len(s: &str, len: usize) -> HashSet<Vec<String>> {
     let graph = input_to_graph(s);
-    let bfs = Bfs::new_with_refdata(
-        SearchState::Init,
-        |_, _| false,
-        |_| None,
-        |state, g| match state {
-            SearchState::Keys(v) => Box::new(
-                v.clone()
-                    .into_iter()
-                    .flat_map(|k| g.get(&k).cloned().into_iter())
-                    .reduce(|mut acc, e| acc.intersection(&e).cloned().collect())
-                    .map(move |set| {
-                        set.into_iter().map(move |x| {
-                            let mut vc = v.clone();
-                            vc.push(x.to_owned());
-                            (SearchState::Keys(vc), ())
-                        })
+    let bfs = Bfs::new(SearchState::Init, |state| match state {
+        SearchState::Keys(v) => Box::new(
+            v.clone()
+                .into_iter()
+                .flat_map(|k| graph.get(&k).cloned().into_iter())
+                .reduce(|mut acc, e| acc.intersection(&e).cloned().collect())
+                .map(move |set| {
+                    set.into_iter().map(move |x| {
+                        let mut vc = v.clone();
+                        vc.push(x.to_owned());
+                        (SearchState::Keys(vc), ())
                     })
-                    .into_iter()
-                    .flatten(),
-            ) as Box<dyn Iterator<Item = (SearchState, ())>>,
-            SearchState::Init => Box::new(
-                g.keys()
-                    .map(|k| (SearchState::Keys([k.to_string()].into()), ())),
-            ) as Box<dyn Iterator<Item = (SearchState, ())>>,
-        },
-        &graph,
-    )
+                })
+                .into_iter()
+                .flatten(),
+        ) as Box<dyn Iterator<Item = (SearchState, ())>>,
+        SearchState::Init => Box::new(
+            graph
+                .keys()
+                .map(|k| (SearchState::Keys([k.to_string()].into()), ())),
+        ) as Box<dyn Iterator<Item = (SearchState, ())>>,
+    })
     .with_max_len(len)
     .execute();
     bfs.into_iter()
@@ -79,40 +74,35 @@ fn get_sets_len(s: &str, len: usize) -> HashSet<Vec<String>> {
 
 fn get_largest_set(s: &str) -> Vec<String> {
     let graph = input_to_graph(s);
-    let bfs = Bfs::new_with_refdata(
-        SearchState::Init,
-        |_, _| false,
-        |_| None,
-        |state, g| match state {
-            SearchState::Keys(v) => Box::new(
-                v.clone()
-                    .into_iter()
-                    .flat_map(|k| g.get(&k).cloned().into_iter())
-                    .reduce(|mut acc, e| acc.intersection(&e).cloned().collect())
-                    .map(move |set| {
-                        set.into_iter().map(move |x| {
-                            let mut vc = v.clone();
-                            vc.push(x.to_owned());
-                            (SearchState::Keys(vc), ())
-                        })
+    let bfs = Bfs::new(SearchState::Init, |state| match state {
+        SearchState::Keys(v) => Box::new(
+            v.clone()
+                .into_iter()
+                .flat_map(|k| graph.get(&k).cloned().into_iter())
+                .reduce(|mut acc, e| acc.intersection(&e).cloned().collect())
+                .map(move |set| {
+                    set.into_iter().map(move |x| {
+                        let mut vc = v.clone();
+                        vc.push(x.to_owned());
+                        (SearchState::Keys(vc), ())
                     })
-                    .into_iter()
-                    .flatten(),
-            ) as Box<dyn Iterator<Item = (SearchState, ())>>,
-            SearchState::Init => Box::new(
-                g.keys()
-                    .map(|k| (SearchState::Keys([k.to_string()].into()), ())),
-            ) as Box<dyn Iterator<Item = (SearchState, ())>>,
-        },
-        &graph,
-    )
+                })
+                .into_iter()
+                .flatten(),
+        ) as Box<dyn Iterator<Item = (SearchState, ())>>,
+        SearchState::Init => Box::new(
+            graph
+                .keys()
+                .map(|k| (SearchState::Keys([k.to_string()].into()), ())),
+        ) as Box<dyn Iterator<Item = (SearchState, ())>>,
+    })
     .in_debug_mode()
     .execute();
     let (largest_set, _) = bfs
         .into_iter()
         .max_by_key(|(k, v)| match k {
             SearchState::Keys(vec) => {
-                let mut set: Vec<_> = vec.into_iter().collect();
+                let mut set: Vec<_> = vec.iter().collect();
                 set.sort();
                 set.dedup();
                 set.len()

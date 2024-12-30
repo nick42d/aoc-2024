@@ -1,11 +1,13 @@
 use crate::{
     day_16::{char_to_tile, Tile},
-    utils::{Bfs, Grid, Point},
+    utils::{Bfs, Grid, Point, StateWithRefdata},
 };
 use std::{
     cmp::Reverse,
     collections::{hash_map::Entry, BinaryHeap, HashMap},
+    fmt::Debug,
     fs::DirEntry,
+    hash::Hash,
 };
 
 fn parse_input(s: &str) -> Grid<Tile> {
@@ -19,12 +21,14 @@ enum CheatState {
     Finished { start: Point, end: Point },
 }
 
-fn next_moves(
-    p: Point,
-    c: CheatState,
-    g: &'_ Grid<Tile>,
+fn next_moves<'a>(
+    s: StateWithRefdata<'a, (Point, CheatState), Grid<Tile>>,
     max_cheats: usize,
-) -> impl Iterator<Item = ((Point, CheatState), ())> + '_ {
+) -> impl Iterator<Item = (StateWithRefdata<'a, (Point, CheatState), Grid<Tile>>, ())> + 'a {
+    let StateWithRefdata {
+        state: (p, c),
+        refdata: g,
+    } = s;
     // Neighbours are:
     // - In bounds
     // - Non-corrupted
@@ -33,12 +37,14 @@ fn next_moves(
             p.adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
                 .into_iter()
                 .filter(move |n| g.get_cell_unchecked(*n) == &Tile::Wall && max_cheats > 0)
-                .map(move |n| (n, CheatState::InProgress { start: p, times: 1 }))
+                .map(move |n| {
+                    StateWithRefdata::new((n, CheatState::InProgress { start: p, times: 1 }), g)
+                })
                 .chain(
                     p.adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
                         .into_iter()
                         .filter(|n| g.get_cell_unchecked(*n) != &Tile::Wall)
-                        .map(|n| (n, CheatState::Zero)),
+                        .map(move |n| StateWithRefdata::new((n, CheatState::Zero), g)),
                 ),
         ) as Box<dyn Iterator<Item = _>>,
         CheatState::InProgress { start, times } => Box::new(
@@ -46,7 +52,7 @@ fn next_moves(
             p.adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
                 .into_iter()
                 .filter(move |n| g.get_cell_unchecked(*n) != &Tile::Wall)
-                .map(move |n| (n, CheatState::Finished { start, end: n }))
+                .map(move |n| StateWithRefdata::new((n, CheatState::Finished { start, end: n }), g))
                 // Case 2 - cheat still in progress. Must mark finished if finishing at goal.
                 .chain(
                     p.adjacent_inbounds_neighbours(g.width_unchecked(), g.height())
@@ -55,12 +61,15 @@ fn next_moves(
                             times + 1 < max_cheats && g.get_cell_unchecked(*n) != &Tile::End
                         })
                         .map(move |n| {
-                            (
-                                n,
-                                CheatState::InProgress {
-                                    start,
-                                    times: times + 1,
-                                },
+                            StateWithRefdata::new(
+                                (
+                                    n,
+                                    CheatState::InProgress {
+                                        start,
+                                        times: times + 1,
+                                    },
+                                ),
+                                g,
                             )
                         }),
                 ),
@@ -70,53 +79,50 @@ fn next_moves(
                 .into_iter()
                 .filter(|n| g.get_cell_unchecked(*n) != &Tile::Wall)
                 .filter(move |n| *n != start)
-                .map(move |n| (n, CheatState::Finished { start, end })),
+                .map(move |n| StateWithRefdata::new((n, CheatState::Finished { start, end }), g)),
         ) as Box<dyn Iterator<Item = _>>,
     };
     next_moves.zip(std::iter::repeat(()))
+}
+
+fn shortest_path_len(g: &Grid<Tile>, max_cheats: usize) -> usize {
+    let start = g.find_unchecked(Tile::Start);
+    let target = g.find_unchecked(Tile::End);
+    let init = StateWithRefdata::new((start, CheatState::Zero), g);
+    Bfs::new(init, |state| next_moves(state, max_cheats))
+        .with_goal_check_fn(|StateWithRefdata { state, .. }| state.0 == target)
+        .execute()
+        .into_iter()
+        .find_map(
+            |(StateWithRefdata { state: (p, c), .. }, w)| if p == target { Some(w) } else { None },
+        )
+        .unwrap()
 }
 
 fn solve(s: &str, at_least_ps: usize, max_cheats: usize) -> usize {
     let g = parse_input(s);
     let start = g.find_unchecked(Tile::Start);
     let target = g.find_unchecked(Tile::End);
-    let shortest_path = *Bfs::new_with_refdata(
-        (start, CheatState::Zero),
-        |(p, _), b| p == &target,
-        |t| std::iter::once(*t),
-        |(point, cheat), grid| next_moves(point, cheat, grid, 0),
-        &g,
-    )
-    .execute()
-    .iter()
-    .find_map(|((p, c), w)| if p == &target { Some(w) } else { None })
-    .unwrap();
-    let shortest_cheat_path = *Bfs::new_with_refdata(
-        (start, CheatState::Zero),
-        |(p, _), b| p == &target,
-        |t| std::iter::once(*t),
-        |(point, cheat), grid| next_moves(point, cheat, grid, max_cheats),
-        &g,
-    )
-    .execute()
-    .iter()
-    .find_map(|((p, c), w)| if p == &target { Some(w) } else { None })
-    .unwrap();
-    let mut cheats = Bfs::new_with_refdata(
-        (start, CheatState::Zero),
-        |_, _| false,
-        |t| std::iter::once(*t),
-        |(point, cheat), grid| next_moves(point, cheat, grid, max_cheats),
-        &g,
-    )
-    .with_max_len(shortest_path)
-    // .in_debug_mode()
-    .execute()
-    .into_iter()
-    .filter_map(|((p, c), h)| if p == target { Some((p, c, h)) } else { None })
-    .filter(|(p, c, w)| *w <= (shortest_path - at_least_ps))
-    .filter(|(p, c, w)| matches!(c, CheatState::Finished { .. }))
-    .collect::<Vec<_>>();
+    let shortest_path = shortest_path_len(&g, 0);
+    let shortest_cheat_path = shortest_path_len(&g, max_cheats);
+    let init = StateWithRefdata::new((start, CheatState::Zero), &g);
+    let mut cheats = Bfs::new(init, |state| next_moves(state, max_cheats))
+        .with_max_len(shortest_path)
+        // .in_debug_mode()
+        .execute()
+        .into_iter()
+        .filter_map(
+            |(StateWithRefdata { state: (p, c), .. }, h)| {
+                if p == target {
+                    Some((p, c, h))
+                } else {
+                    None
+                }
+            },
+        )
+        .filter(|(p, c, w)| *w <= (shortest_path - at_least_ps))
+        .filter(|(p, c, w)| matches!(c, CheatState::Finished { .. }))
+        .collect::<Vec<_>>();
     cheats.sort_by_key(|(p, c, w)| *c);
     cheats.dedup_by_key(|(p, c, w)| *c);
     println!("Shortest no-cheat path is {shortest_path}");
@@ -172,7 +178,7 @@ pub(crate) fn part_2(input: String) {
 mod tests {
     use crate::{
         day_16::Tile,
-        day_20::{next_moves, parse_input, solve, CheatState},
+        day_20::{next_moves, parse_input, shortest_path_len, solve, CheatState},
         utils::{Bfs, Point},
     };
 
@@ -194,42 +200,12 @@ mod tests {
     #[test]
     fn test_part_1_no_cheat() {
         let g = parse_input(TEST_DATA);
-        let start = g.find_unchecked(Tile::Start);
-        let fin = g.find_unchecked(Tile::End);
-        let graph = Bfs::new_with_refdata(
-            (start, CheatState::Zero),
-            move |(point, _), b| *point == fin,
-            |t| std::iter::once(*t),
-            |(point, cheat), grid| next_moves(point, cheat, grid, 0),
-            &g,
-        )
-        .with_history()
-        .execute();
-        assert_eq!(graph.get(&(fin, CheatState::Zero,)).unwrap().len(), 84);
+        assert_eq!(shortest_path_len(&g, 0), 84);
     }
     #[test]
     fn test_part_1_best_cheat() {
         let g = parse_input(TEST_DATA);
-        let start = g.find_unchecked(Tile::Start);
-        let fin = g.find_unchecked(Tile::End);
-        let graph = Bfs::new_with_refdata(
-            (start, CheatState::Zero),
-            move |(point, _), b| *point == fin,
-            |t| std::iter::once(*t),
-            |(point, cheat), grid| next_moves(point, cheat, grid, 2),
-            &g,
-        )
-        .with_history()
-        .execute();
-        assert_eq!(
-            graph
-                .into_iter()
-                .find(|((k1, k2), v)| *k1 == fin)
-                .unwrap()
-                .1
-                .len(),
-            20
-        );
+        assert_eq!(shortest_path_len(&g, 2), 20);
     }
     #[test]
     fn test_part_1() {

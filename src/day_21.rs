@@ -1,5 +1,6 @@
 use crate::utils::{
-    generic_bfs, generic_bfs_nohistory, generic_dfs_nohistory, generic_dijkstra, Bfs, Direction,
+    generic_bfs_nohistory, generic_dfs_nohistory, generic_dijkstra, Bfs, Direction,
+    StateWithRefdata,
 };
 use std::{
     collections::{BinaryHeap, HashMap, HashSet, VecDeque},
@@ -321,11 +322,12 @@ fn solve_part_2(s: &str) -> usize {
         let code = get_numeric_code(line);
         let shortest_len_numeric = shortest_len::<1>(&input);
         println!("Shortest len: {:?}", shortest_len_numeric);
-        let mut shortest_len_directional = shortest_len_directional::<2>(shortest_len_numeric);
-        for i in 2..=25 {
-            let shortest_len_numeric = shortest_len::<1>(&input);
-            println!("Shortest len: {:?}", shortest_len);
-        }
+        // let mut shortest_len_directional =
+        // shortest_len_directional::<2>(shortest_len_numeric.0);
+        // for i in 2..=25 {
+        //     let shortest_len_numeric = shortest_len::<1>(&input);
+        //     println!("Shortest len: {:?}", shortest_len);
+        // }
     }
     total_complexity
 }
@@ -339,12 +341,11 @@ pub(crate) fn part_2(input: String) {
 }
 
 fn shortest_len<const N: usize>(codes: &[NumericKeypadState]) -> (Vec<NumericKeypadState>, usize) {
-    let set = Bfs::new_with_refdata(
-        State::<N>::default(),
-        |state, _| state.sequence.as_slice() == codes,
-        |_, _| false,
-        State::get_neighbours,
-    );
+    let set = Bfs::new(State::<N>::default(), |state| {
+        state.get_neighbours(codes).map(|(s, m)| (s, m))
+    })
+    .with_goal_check_fn(|state| state.sequence.as_slice() == codes)
+    .execute();
     let (f, w) = set
         .into_iter()
         .find(|(s, _)| s.sequence.as_slice() == codes)
